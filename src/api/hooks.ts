@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { SubsonicController } from './subsonic';
 import { useAuthStore } from '../store/auth.store';
 
@@ -69,27 +69,54 @@ export const useGetArtistInfo2 = (id: string) => {
   });
 };
 
-export const useGetAlbumList = (type: string = 'newest', size: number = 50) => {
+export const useGetAlbumList = (type: string = 'newest', size: number = 40, offset: number = 0) => {
   const controller = useController();
   return useQuery({
-    queryKey: ['albumList', type, size, controller?.['config']?.serverUrl],
+    queryKey: ['albumList', type, size, offset, controller?.['config']?.serverUrl],
     queryFn: async () => {
       if (!controller) throw new Error('Not authenticated');
-      return controller.getAlbumList(type, size);
+      return controller.getAlbumList(type, size, offset);
+    },
+    placeholderData: keepPreviousData,
+    enabled: !!controller,
+  });
+};
+
+export const useGetRandomSongsQuery = (size: number = 40, offset: number = 0) => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['randomSongsQuery', size, offset, controller?.['config']?.serverUrl],
+    queryFn: async () => {
+      if (!controller) throw new Error('Not authenticated');
+      return controller.getRandomSongs(size, offset);
+    },
+    placeholderData: keepPreviousData,
+    enabled: !!controller,
+  });
+};
+
+export const useGetGenres = () => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['genres', controller?.['config']?.serverUrl],
+    queryFn: async () => {
+      if (!controller) throw new Error('Not authenticated');
+      return controller.getGenres();
     },
     enabled: !!controller,
   });
 };
 
-export const useGetRandomSongsQuery = (size: number = 50) => {
+export const useGetAlbumList2 = (type: string = 'newest', size: number = 40, offset: number = 0, extra?: Record<string, string>) => {
   const controller = useController();
   return useQuery({
-    queryKey: ['randomSongsQuery', size, controller?.['config']?.serverUrl],
+    queryKey: ['albumList2', type, size, offset, extra, controller?.['config']?.serverUrl],
     queryFn: async () => {
       if (!controller) throw new Error('Not authenticated');
-      return controller.getRandomSongs(size);
+      return controller.getAlbumList2(type, size, offset, extra);
     },
-    enabled: !!controller,
+    placeholderData: keepPreviousData,
+    enabled: !!controller && (type !== 'byGenre' || !!extra?.genre),
   });
 };
 

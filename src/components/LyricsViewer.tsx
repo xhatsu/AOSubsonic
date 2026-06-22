@@ -1,78 +1,237 @@
-import { useEffect, useState, useCallback } from 'react';
-import '@uimaxbai/am-lyrics/am-lyrics.js';
-import { AmLyrics } from '@uimaxbai/am-lyrics/react';
+import { useEffect, useState, useRef } from 'react';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiRefreshCw } from 'react-icons/fi';
+import { FiRefreshCw, FiEye, FiEyeOff } from 'react-icons/fi';
+// @ts-ignore
+import LyricsPlusRenderer from '../utils/youlyplus/lyricsRenderer';
+import { fetchLyrics } from '../utils/lyricsFetcher';
+import '../utils/youlyplus/lyrics.css';
 
 export const LyricsViewer = () => {
-  const currentSong = usePlayerStore((state) => state.queue[state.currentIndex]);
+  const queue = usePlayerStore((state) => state.queue);
+  const currentIndex = usePlayerStore((state) => state.currentIndex);
+  const currentSong = queue[currentIndex];
   const themeColor = useUIStore((state) => state.themeColor);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [forceReset, setForceReset] = useState(false);
+  const showFps = useUIStore((state) => state.showFps);
+  const toggleFps = useUIStore((state) => state.toggleFps);
+
+  const rendererRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const fpsRef = useRef<HTMLDivElement | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const [forceResetKey, setForceResetKey] = useState(0);
+
+  // Helper to get the audio element, caching it once found
+  const getAudio = () => {
+    if (!audioRef.current) {
+      audioRef.current = document.getElementById('main-audio-player') as HTMLAudioElement;
+    }
+    return audioRef.current;
+  };
+
+  // Re-cache audio element when song changes (the <audio> element may be re-created)
+  useEffect(() => {
+    audioRef.current = null; // invalidate stale ref
+    // Allow a tick for AudioPlayer to render the new <audio> element
+    const timer = setTimeout(() => {
+      audioRef.current = document.getElementById('main-audio-player') as HTMLAudioElement;
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [currentSong]);
 
   useEffect(() => {
-    let animationFrameId: number;
-
-    const updateLyricsTime = () => {
-      const audio = document.getElementById('main-audio-player') as HTMLAudioElement | null;
-      if (audio) {
-        setCurrentTime(audio.currentTime * 1000);
-      }
-      animationFrameId = requestAnimationFrame(updateLyricsTime);
-    };
-
-    animationFrameId = requestAnimationFrame(updateLyricsTime);
+    // Initialize renderer with disableNativeTick: true (matching the extension)
+    if (!rendererRef.current && containerRef.current) {
+      rendererRef.current = new LyricsPlusRenderer({
+        patchParent: '#lyrics-mount-point',
+        player: '#main-audio-player',
+        buttonParent: '#lyrics-mount-point',
+        selectors: ['#lyrics-mount-point'],
+        disableNativeTick: true, // CRITICAL: Match the extension architecture
+        getCurrentTime: () => {
+          const audio = getAudio();
+          return audio ? audio.currentTime : 0;
+        }
+      });
+    }
 
     return () => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (rendererRef.current) {
+        rendererRef.current.cleanupLyrics();
+        rendererRef.current = null;
+      }
     };
   }, []);
 
-  const handleLineClick = useCallback((e: any) => {
-    const customEvent = e as CustomEvent<{ timestamp: number }>;
-    const audio = document.getElementById('main-audio-player') as HTMLAudioElement | null;
-    
-    if (audio && customEvent.detail?.timestamp !== undefined) {
-      audio.currentTime = customEvent.detail.timestamp / 1000;
-      audio.play().catch(console.error);
-    }
+  // Run our own lightweight rAF sync loop (like songTracker.js does in the extension)
+  useEffect(() => {
+    let lastAudioTime = -1;
+    let interpolatedTime = 0;
+    let lastRafTime = performance.now();
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
+
+    const syncLoop = (time: number) => {
+      const audio = getAudio();
+      const renderer = rendererRef.current;
+      const deltaMs = time - lastRafTime;
+      lastRafTime = time;
+
+      // FPS Calculation
+      frameCount++;
+      if (time - lastFpsTime >= 1000) {
+        if (fpsRef.current) {
+          fpsRef.current.innerText = `${frameCount} FPS`;
+        }
+        frameCount = 0;
+        lastFpsTime = time;
+      }
+
+      if (audio && renderer) {
+        if (!audio.paused) {
+          const currentAudioTime = audio.currentTime;
+
+          // If the hardware audio time updated, resync our interpolator
+          if (Math.abs(currentAudioTime - lastAudioTime) > 0.001) {
+            interpolatedTime = currentAudioTime;
+            lastAudioTime = currentAudioTime;
+          } else {
+            // Hardware time hasn't updated yet, extrapolate based on frame delta
+            interpolatedTime += deltaMs / 1000;
+          }
+
+          // Clamp to prevent wild desyncs if the thread stalls
+          if (interpolatedTime > currentAudioTime + 0.5) {
+            interpolatedTime = currentAudioTime;
+          }
+
+          renderer.updateCurrentTick(interpolatedTime);
+        } else {
+          // Send exact time if paused
+          renderer.updateCurrentTick(audio.currentTime);
+        }
+      }
+
+      rafIdRef.current = requestAnimationFrame(syncLoop);
+    };
+
+    rafIdRef.current = requestAnimationFrame(syncLoop);
+
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
   }, []);
 
+  useEffect(() => {
+    if (!currentSong || !rendererRef.current) return;
+
+    let isMounted = true;
+    const loadLyrics = async () => {
+      if (rendererRef.current.cleanupLyrics) {
+        rendererRef.current.cleanupLyrics(); // Clear previous
+      }
+
+      const lyricsData = await fetchLyrics(currentSong);
+
+      if (!isMounted) return;
+
+      if (lyricsData) {
+        const settings = {
+          wordByWord: true,
+          relaxScroll: true,
+          hideOffscreen: true, // CRITICAL: Hides 90% of DOM nodes from GPU when offscreen
+          blurInactive: false,
+          lightweight: false, // CRITICAL: Disables heavy translateY/drop-shadow effects
+        };
+        rendererRef.current.displayLyrics(
+          lyricsData,
+          currentSong,
+          'none',
+          settings,
+          null, // fetchAndDisplayLyricsFn
+          null, // setCurrentDisplayModeAndRefetchFn
+          'lyrics',
+          0
+        );
+      } else {
+        rendererRef.current.displaySongNotFound();
+      }
+    };
+
+    loadLyrics();
+
+    return () => {
+      isMounted = false;
+      if (rendererRef.current) {
+        rendererRef.current.cleanupLyrics();
+      }
+    };
+  }, [currentSong, forceResetKey]);
+
+  // Update theme color for the renderer dynamically
+  useEffect(() => {
+    const container = document.getElementById('lyrics-plus-container');
+    if (container && themeColor) {
+      container.style.setProperty('--lyplus-lyrics-pallete', themeColor);
+    }
+  }, [themeColor, currentSong]);
+
   const handleRefresh = () => {
-    setForceReset(true);
-    setTimeout(() => setForceReset(false), 50);
+    setForceResetKey(k => k + 1);
   };
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden relative group">
-      {currentSong && (
-        <button 
-          onClick={handleRefresh}
-          className="absolute top-6 right-6 z-50 bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all opacity-0 group-hover:opacity-100"
-          title="Reload Lyrics"
+      {/* FPS Counter */}
+      {showFps && (
+        <div
+          ref={fpsRef}
+          className="absolute top-6 left-6 z-50 bg-black/50 text-green-400 font-mono text-sm px-3 py-1 rounded-md backdrop-blur-md border border-white/10 pointer-events-none"
         >
-          <FiRefreshCw className="text-lg" />
-        </button>
+          0 FPS
+        </div>
       )}
 
-      <AmLyrics 
-        duration={forceReset ? -1 : undefined}
-        songTitle={currentSong?.title || ''} 
-        songArtist={currentSong?.artist || ''}
-        songAlbum={currentSong?.album || ''}
-        songDurationMs={currentSong?.duration ? currentSong.duration * 1000 : undefined}
-        query={currentSong ? `${currentSong.title} ${currentSong.artist}` : ''}
-        currentTime={currentTime}
-        onLineClick={handleLineClick}
-        autoScroll={true} 
-        highlightColor={themeColor} 
-        style={{ 
-          width: '100%', 
-          height: '100%', 
-          '--am-lyrics-highlight-color': themeColor,
+      {/* Top right floating buttons */}
+      <div className="absolute top-6 right-6 z-50 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-all">
+        <button
+          onClick={toggleFps}
+          className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all"
+          title="Toggle FPS Counter"
+        >
+          {showFps ? <FiEyeOff className="text-lg" /> : <FiEye className="text-lg" />}
+        </button>
+
+        {currentSong && (
+          <button
+            onClick={handleRefresh}
+            className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all"
+            title="Reload Lyrics"
+          >
+            <FiRefreshCw className="text-lg" />
+          </button>
+        )}
+      </div>
+
+      <div
+        id="lyrics-mount-point"
+        ref={containerRef}
+        className="w-full h-full overflow-hidden relative z-10"
+        onScroll={(e) => {
+          // Sync header scroll position via CSS variable for maximum performance
+          const target = e.target as HTMLDivElement;
+          target.parentElement?.style.setProperty('--lyplus-scroll-top', `${target.scrollTop}px`);
+        }}
+        style={{
           opacity: currentSong ? 1 : 0,
-          pointerEvents: currentSong ? 'auto' : 'none'
+          pointerEvents: currentSong ? 'auto' : 'none',
+          willChange: 'scroll-position',
+          isolation: 'isolate',
+          transform: 'translateZ(0)'
         } as any}
       />
 

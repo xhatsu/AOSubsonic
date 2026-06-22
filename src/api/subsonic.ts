@@ -91,12 +91,20 @@ export class SubsonicController {
     return this.request<any>('getArtistInfo2', { id });
   }
 
-  async getAlbumList(type: string = 'newest', size: number = 50) {
-    return this.request<any>('getAlbumList', { type, size });
+  async getAlbumList(type: string = 'newest', size: number = 40, offset: number = 0) {
+    return this.request<any>('getAlbumList', { type, size, offset });
   }
 
-  async getRandomSongs(size: number = 50) {
-    return this.request<any>('getRandomSongs', { size });
+  async getRandomSongs(size: number = 40, offset: number = 0) {
+    return this.request<any>('getRandomSongs', { size, offset });
+  }
+
+  async getGenres() {
+    return this.request<any>('getGenres');
+  }
+
+  async getAlbumList2(type: string = 'newest', size: number = 40, offset: number = 0, extra?: Record<string, string>) {
+    return this.request<any>('getAlbumList2', { type, size, offset, ...extra });
   }
 
   async search3(query: string, artistCount: number = 10, albumCount: number = 10, songCount: number = 20) {

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type ViewState = 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail';
+type ViewState = 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail';
 
 interface UIState {
   showLyrics: boolean;
@@ -10,6 +10,8 @@ interface UIState {
   setThemeColor: (color: string) => void;
   view: ViewState;
   setView: (view: ViewState) => void;
+  showFps: boolean;
+  toggleFps: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -19,8 +21,10 @@ export const useUIStore = create<UIState>()(
       toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
       themeColor: '#aa3bff',
       setThemeColor: (color: string) => set({ themeColor: color }),
-      view: 'artists',
+      view: 'albums',
       setView: (view) => set({ view }),
+      showFps: false,
+      toggleFps: () => set((state) => ({ showFps: !state.showFps })),
     }),
     {
       name: 'ui-storage',

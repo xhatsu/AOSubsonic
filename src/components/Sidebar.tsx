@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/auth.store';
 import { useUIStore } from '../store/ui.store';
-import { FiMusic, FiList, FiSettings, FiLogOut, FiChevronDown, FiChevronRight, FiUser, FiDisc, FiRadio } from 'react-icons/fi';
+import { FiMusic, FiList, FiSettings, FiLogOut, FiChevronDown, FiChevronRight, FiUser, FiDisc, FiRadio, FiGrid } from 'react-icons/fi';
 
 const THEMES = [
   { name: 'Purple', value: '#aa3bff' },
@@ -55,6 +55,13 @@ export const Sidebar = () => {
                 >
                   <FiRadio className="text-md" />
                   <span>Tracks</span>
+                </button>
+                <button 
+                  onClick={() => setView('genres')}
+                  className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors text-sm ${view === 'genres' || view === 'genreDetail' ? 'bg-primary/20 text-primary font-medium' : 'hover:bg-zinc-900 hover:text-white'}`}
+                >
+                  <FiGrid className="text-md" />
+                  <span>Genres</span>
                 </button>
               </div>
             )}
