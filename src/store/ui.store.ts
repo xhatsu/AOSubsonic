@@ -12,6 +12,8 @@ interface UIState {
   setView: (view: ViewState) => void;
   showFps: boolean;
   toggleFps: () => void;
+  dominantColor: string | null;
+  setDominantColor: (color: string | null) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -25,6 +27,8 @@ export const useUIStore = create<UIState>()(
       setView: (view) => set({ view }),
       showFps: false,
       toggleFps: () => set((state) => ({ showFps: !state.showFps })),
+      dominantColor: null,
+      setDominantColor: (color: string | null) => set({ dominantColor: color }),
     }),
     {
       name: 'ui-storage',

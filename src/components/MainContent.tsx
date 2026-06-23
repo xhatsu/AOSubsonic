@@ -7,12 +7,15 @@ import { useUIStore } from '../store/ui.store';
 import { FiPlay, FiArrowLeft, FiSearch, FiX, FiMusic, FiTrash2, FiPlus } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
 import { WikiImageFallback } from './WikiImageFallback';
+import { FastAverageColor } from 'fast-average-color';
 import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
 
 export const MainContent = () => {
   const { view, setView } = useUIStore();
   const [selectedAlbumId, setSelectedAlbumId] = useState<string>('');
+  const [selectedAlbumCover, setSelectedAlbumCover] = useState<string>('');
   const [selectedArtistId, setSelectedArtistId] = useState<string>('');
+  const [selectedArtistCover, setSelectedArtistCover] = useState<string>('');
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,6 +121,10 @@ export const MainContent = () => {
   );
 
   const config = useAuthStore(state => state.config);
+  const queue = usePlayerStore(state => state.queue);
+  const currentIndex = usePlayerStore(state => state.currentIndex);
+  const currentSong = queue[currentIndex];
+  
   const setQueue = usePlayerStore(state => state.setQueue);
   const play = usePlayerStore(state => state.play);
   const addToQueue = usePlayerStore(state => state.addToQueue);
@@ -203,13 +210,15 @@ export const MainContent = () => {
     }
   };
 
-  const handleOpenArtist = (artistId: string) => {
+  const handleOpenArtist = (artistId: string, coverArt?: string) => {
     setSelectedArtistId(artistId);
+    setSelectedArtistCover(coverArt || artistId);
     setView('artistDetail');
   };
 
-  const handleOpenAlbum = (albumId: string) => {
+  const handleOpenAlbum = (albumId: string, coverArt?: string) => {
     setSelectedAlbumId(albumId);
+    setSelectedAlbumCover(coverArt || albumId);
     setView('albumDetail');
   };
 
@@ -313,7 +322,7 @@ export const MainContent = () => {
       <div className="flex flex-col flex-1">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mt-6">
           {paginatedArtists.map((artist: any) => (
-            <div key={artist.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors" onClick={() => handleOpenArtist(artist.id)}>
+            <div key={artist.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors" onClick={() => handleOpenArtist(artist.id, artist.artistImageUrl || artist.coverArt)}>
               <div className="aspect-square bg-zinc-700 rounded-full mb-4 shadow-lg group-hover:shadow-xl transition-shadow flex items-center justify-center overflow-hidden">
                 {artist.artistImageUrl ? (
                   <CachedImage id={`artist_${artist.id}`} url={artist.artistImageUrl} alt={artist.name} className="w-full h-full object-cover" />
@@ -347,7 +356,7 @@ export const MainContent = () => {
       <div className="flex flex-col flex-1">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mt-6">
           {allAlbums.map((album: any) => (
-            <div key={album.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors" onClick={() => handleOpenAlbum(album.id)}>
+            <div key={album.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors" onClick={() => handleOpenAlbum(album.id, album.coverArt)}>
               <div className="aspect-square bg-zinc-700 rounded-lg mb-4 shadow-lg group-hover:shadow-xl transition-shadow flex items-center justify-center overflow-hidden">
                 {album.coverArt && ctrl ? (
                   <CachedImage id={album.coverArt} url={ctrl.getCoverArtUrl(album.coverArt)} alt={album.title} className="w-full h-full object-cover" />
@@ -448,7 +457,7 @@ export const MainContent = () => {
                           className="flex items-center space-x-3 p-2 hover:bg-zinc-700/50 rounded-lg cursor-pointer transition-colors"
                           onClick={() => {
                             setShowDropdown(false);
-                            handleOpenArtist(artist.id);
+                            handleOpenArtist(artist.id, artist.artistImageUrl || artist.coverArt);
                           }}
                         >
                           <div className="w-10 h-10 bg-zinc-700 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -520,7 +529,7 @@ export const MainContent = () => {
                           className="flex items-center space-x-3 p-2 hover:bg-zinc-700/50 rounded-lg cursor-pointer transition-colors"
                           onClick={() => {
                             setShowDropdown(false);
-                            handleOpenAlbum(album.id);
+                            handleOpenAlbum(album.id, album.coverArt);
                           }}
                         >
                           <div className="w-10 h-10 bg-zinc-700 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -584,7 +593,7 @@ export const MainContent = () => {
       <div className="flex flex-col mt-4 pb-10 flex-1">
         <button
           onClick={() => setView('genres')}
-          className="flex items-center text-zinc-400 hover:text-white mb-6 w-fit transition-colors"
+          className="flex items-center text-white hover:text-white/80 font-medium mb-6 w-fit transition-colors drop-shadow-md"
         >
           <FiArrowLeft className="mr-2" /> Back to Genres
         </button>
@@ -600,7 +609,7 @@ export const MainContent = () => {
                 <div
                   key={album.id}
                   className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors"
-                  onClick={() => handleOpenAlbum(album.id)}
+                  onClick={() => handleOpenAlbum(album.id, album.coverArt)}
                 >
                   <div className="aspect-square bg-zinc-700 rounded-lg mb-4 shadow-lg group-hover:shadow-xl transition-shadow flex items-center justify-center overflow-hidden">
                     {album.coverArt && ctrl ? (
@@ -633,12 +642,17 @@ export const MainContent = () => {
 
     return (
       <div className="flex flex-col mt-4 pb-10">
-        <button onClick={() => setView(lastView === 'genreDetail' ? 'genreDetail' : 'albums')} className="flex items-center text-zinc-400 hover:text-white mb-6 w-fit transition-colors">
+        <button onClick={() => setView(lastView === 'genreDetail' ? 'genreDetail' : 'albums')} className="flex items-center text-white hover:text-white/80 font-medium mb-6 w-fit transition-colors drop-shadow-md">
           <FiArrowLeft className="mr-2" /> Back to {lastView === 'genreDetail' ? 'Genre' : 'Albums'}
         </button>
 
-        <div className="flex items-end space-x-6 mb-8">
-          <div className="w-48 h-48 bg-zinc-800 rounded-lg shadow-2xl overflow-hidden flex-shrink-0">
+        <div className="flex items-end space-x-6 mb-8 mt-4 relative z-10">
+          <div 
+            className="w-48 h-48 bg-zinc-800 rounded-lg shadow-2xl overflow-hidden flex-shrink-0 relative"
+            style={{
+              boxShadow: dominantColor ? `0 20px 40px -10px ${dominantColor}66` : undefined
+            }}
+          >
             {album.coverArt && ctrl ? (
               <CachedImage id={album.coverArt} url={ctrl.getCoverArtUrl(album.coverArt)} alt={album.title} className="w-full h-full object-cover" />
             ) : (
@@ -708,7 +722,7 @@ export const MainContent = () => {
 
     return (
       <div className="flex flex-col mt-4 pb-10">
-        <button onClick={() => setView('artists')} className="flex items-center text-zinc-400 hover:text-white mb-6 w-fit transition-colors">
+        <button onClick={() => setView('artists')} className="flex items-center text-white hover:text-white/80 font-medium mb-6 w-fit transition-colors drop-shadow-md">
           <FiArrowLeft className="mr-2" /> Back to Artists
         </button>
 
@@ -743,7 +757,7 @@ export const MainContent = () => {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {artistAlbums.map((album: any) => (
-              <div key={album.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors" onClick={() => handleOpenAlbum(album.id)}>
+              <div key={album.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors" onClick={() => handleOpenAlbum(album.id, album.coverArt)}>
                 <div className="aspect-square bg-zinc-700 rounded-lg mb-4 shadow-lg group-hover:shadow-xl transition-shadow flex items-center justify-center overflow-hidden">
                   {album.coverArt && ctrl ? (
                     <CachedImage id={album.coverArt} url={ctrl.getCoverArtUrl(album.coverArt)} alt={album.title} className="w-full h-full object-cover" />
@@ -764,7 +778,7 @@ export const MainContent = () => {
             <h3 className="text-xl font-bold text-white mb-6">Similar Artists</h3>
             <div className="flex space-x-6 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
               {(Array.isArray(artistInfo.similarArtist) ? artistInfo.similarArtist : [artistInfo.similarArtist]).map((similar: any) => (
-                <div key={similar.id} className="flex flex-col items-center cursor-pointer w-32 flex-shrink-0 group" onClick={() => handleOpenArtist(similar.id)}>
+                <div key={similar.id} className="flex flex-col items-center cursor-pointer w-32 flex-shrink-0 group" onClick={() => handleOpenArtist(similar.id, similar.mediumImageUrl || similar.coverArt)}>
                   <div className="w-24 h-24 rounded-full bg-zinc-800 overflow-hidden mb-3 group-hover:ring-4 ring-primary/50 transition-all">
                     {similar.mediumImageUrl ? (
                       <CachedImage
@@ -787,8 +801,56 @@ export const MainContent = () => {
     );
   };
 
+  // Background Color Extraction
+  const dominantColor = useUIStore(state => state.dominantColor);
+  const setDominantColor = useUIStore(state => state.setDominantColor);
+
+  // Determine dynamic background image URL
+  let backgroundImageUrl = null;
+  if (view === 'albumDetail' && selectedAlbumCover && ctrl) {
+    backgroundImageUrl = selectedAlbumCover.startsWith('http') ? selectedAlbumCover : ctrl.getCoverArtUrl(selectedAlbumCover);
+  } else if (view === 'artistDetail' && selectedArtistCover && ctrl) {
+    backgroundImageUrl = selectedArtistCover.startsWith('http') ? selectedArtistCover : ctrl.getCoverArtUrl(selectedArtistCover);
+  } else if (currentSong?.coverArtUrl) {
+    // Fallback to currently playing song
+    backgroundImageUrl = currentSong.coverArtUrl;
+  }
+
+  useEffect(() => {
+    if (!backgroundImageUrl) {
+      setDominantColor(null);
+      return;
+    }
+
+    const fac = new FastAverageColor();
+    fac.getColorAsync(backgroundImageUrl, { algorithm: 'dominant', crossOrigin: 'anonymous' })
+      .then(color => {
+        // color.hex is like '#RRGGBB'
+        setDominantColor(color.hex);
+      })
+      .catch(err => {
+        console.error('Error extracting color:', err);
+        setDominantColor(null);
+      })
+      .finally(() => {
+        fac.destroy();
+      });
+  }, [backgroundImageUrl]);
+
   return (
-    <div className="flex-1 overflow-y-auto bg-zinc-900 p-8 flex flex-col">
+    <div className="flex-1 overflow-y-auto bg-zinc-900 flex flex-col relative">
+      {/* Premium Header Gradient */}
+      {dominantColor && (
+        <div 
+          className="absolute top-0 left-0 right-0 h-[500px] pointer-events-none transition-colors duration-700 ease-in-out"
+          style={{
+            background: `linear-gradient(to bottom, ${dominantColor}40 0%, ${dominantColor}10 40%, transparent 100%)`
+          }}
+        />
+      )}
+
+      {/* Content wrapper */}
+      <div className="relative z-10 flex flex-col flex-1 p-8">
       {view === 'settings' ? (
         <div className="flex-1">
           <h2 className="text-3xl font-bold text-white mb-8">Settings</h2>
@@ -901,6 +963,7 @@ export const MainContent = () => {
           {view === 'genreDetail' && renderGenreDetail()}
         </>
       )}
+      </div>
     </div>
   );
 };

@@ -17,8 +17,8 @@ export const Sidebar = () => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(true);
 
   return (
-    <div className="w-64 bg-zinc-950 border-r border-zinc-800 flex flex-col justify-between h-full text-zinc-300">
-      <div className="p-6">
+    <div className="w-64 bg-zinc-950 border-r border-zinc-800 flex flex-col justify-between h-full text-zinc-300 relative overflow-hidden">
+      <div className="p-6 relative z-10">
         <h1 className="text-2xl font-bold text-white mb-8 tracking-tighter">OS<span className="text-primary">Client</span></h1>
         <nav className="space-y-2">
           <div>
@@ -79,7 +79,7 @@ export const Sidebar = () => {
           </button>
         </nav>
       </div>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 relative z-10">
         {/* Theme Selector */}
         <div>
           <h3 className="text-xs uppercase font-semibold text-zinc-500 mb-3 tracking-wider px-2">Theme</h3>

@@ -21,6 +21,7 @@ export const LyricsViewer = () => {
   const fpsRef = useRef<HTMLDivElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const [forceResetKey, setForceResetKey] = useState(0);
+  const [lyricsSource, setLyricsSource] = useState<string | null>(null);
 
   // Helper to get the audio element, caching it once found
   const getAudio = () => {
@@ -135,11 +136,29 @@ export const LyricsViewer = () => {
         rendererRef.current.cleanupLyrics(); // Clear previous
       }
 
-      const lyricsData = await fetchLyrics(currentSong);
+      setLyricsSource('Initializing fetch...');
+
+      const lyricsData = await fetchLyrics(currentSong, (url) => {
+        if (isMounted) {
+          try {
+            const parsedUrl = new URL(url);
+            let displayHost = parsedUrl.hostname;
+            // If it's the allorigins proxy, extract the actual target URL
+            if (displayHost === 'api.allorigins.win') {
+              const targetUrl = parsedUrl.searchParams.get('url');
+              if (targetUrl) displayHost = new URL(targetUrl).hostname;
+            }
+            setLyricsSource(`Fetching: ${displayHost}...`);
+          } catch {
+            setLyricsSource('Fetching...');
+          }
+        }
+      });
 
       if (!isMounted) return;
 
       if (lyricsData) {
+        setLyricsSource(lyricsData.metadata?.source || 'Unknown');
         const settings = {
           wordByWord: true,
           relaxScroll: true,
@@ -158,6 +177,7 @@ export const LyricsViewer = () => {
           0
         );
       } else {
+        setLyricsSource(null);
         rendererRef.current.displaySongNotFound();
       }
     };
@@ -185,7 +205,7 @@ export const LyricsViewer = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden relative group">
+    <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden relative group bg-transparent">
       {/* FPS Counter */}
       {showFps && (
         <div
@@ -238,6 +258,18 @@ export const LyricsViewer = () => {
       {!currentSong && (
         <div className="absolute inset-0 flex items-center justify-center z-10 text-zinc-500">
           No track playing
+        </div>
+      )}
+
+      {/* Lyrics Source Pill */}
+      {lyricsSource && currentSong && (
+        <div className="absolute bottom-[100px] right-6 z-[999] opacity-70 hover:opacity-100 transition-opacity duration-300 flex items-center gap-2 bg-zinc-950/80 backdrop-blur-md border border-white/10 shadow-lg rounded-full px-3 py-1.5 text-xs text-white/90">
+          {lyricsSource.startsWith('Fetching') ? (
+            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : null}
+          <span className="cursor-default">
+            {lyricsSource.startsWith('Fetching') ? lyricsSource : `Source: ${lyricsSource}`}
+          </span>
         </div>
       )}
     </div>

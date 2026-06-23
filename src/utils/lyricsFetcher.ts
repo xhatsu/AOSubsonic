@@ -23,7 +23,7 @@ function fetchWithTimeout(url: string, timeoutMs = 6000): Promise<Response> {
   );
 }
 
-export async function fetchLyrics(song: QueueSong) {
+export async function fetchLyrics(song: QueueSong, onFetchingUrl?: (url: string) => void) {
   if (!song) return null;
 
   try {
@@ -40,12 +40,14 @@ export async function fetchLyrics(song: QueueSong) {
     // 1. Try BiniLyrics Cache API first for ultra-fast TTML loading
     try {
       const cacheUrl = `https://lyrics-api.binimum.org/?${params.toString()}`;
+      if (onFetchingUrl) onFetchingUrl(cacheUrl);
       const cacheRes = await fetchWithTimeout(cacheUrl);
       if (cacheRes.ok) {
         const cacheData = await cacheRes.json();
         if (cacheData && cacheData.results && cacheData.results.length > 0) {
           const result = cacheData.results[0];
           if (result.lyricsUrl) {
+            if (onFetchingUrl) onFetchingUrl(result.lyricsUrl);
             const ttmlRes = await fetchWithTimeout(result.lyricsUrl);
             if (ttmlRes.ok) {
               const ttmlText = await ttmlRes.text();
@@ -84,6 +86,7 @@ export async function fetchLyrics(song: QueueSong) {
       const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
 
       try {
+        if (onFetchingUrl) onFetchingUrl(targetUrl);
         const response = await fetchWithTimeout(url);
         if (response.ok) {
           payload = await response.json();
