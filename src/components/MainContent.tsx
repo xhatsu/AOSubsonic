@@ -143,15 +143,14 @@ export const MainContent = () => {
         // Shuffle the tracks currently on screen
         const currentTracks = tracksData.randomSongs.song;
         songsToPlay = [...currentTracks];
-      } else if ((view === 'albums' || view === 'genreDetail') && (albumsData?.albumList?.album || genreAlbumsData?.albumList2?.album)) {
-        // Pick a random album from the ones currently showing on screen
-        const albums = view === 'albums' ? albumsData.albumList.album : genreAlbumsData.albumList2.album;
-        if (albums && albums.length > 0) {
-          const randomAlbum = albums[Math.floor(Math.random() * albums.length)];
-          const res = await ctrl.getAlbum(randomAlbum.id);
-          const rawSongs = res.album?.song;
-          songsToPlay = rawSongs ? (Array.isArray(rawSongs) ? rawSongs : [rawSongs]) : [];
-        }
+      } else if (view === 'genreDetail') {
+        const data = await ctrl.getRandomSongs(20, 0, selectedGenre);
+        const rawSongs = data.randomSongs?.song;
+        songsToPlay = rawSongs ? (Array.isArray(rawSongs) ? rawSongs : [rawSongs]) : [];
+      } else if (view === 'albums') {
+        const data = await ctrl.getRandomSongs(20);
+        const rawSongs = data.randomSongs?.song;
+        songsToPlay = rawSongs ? (Array.isArray(rawSongs) ? rawSongs : [rawSongs]) : [];
       } else if (view === 'artists' && artistsData?.artists?.index) {
         // Pick a random artist showing on screen, then fetch one of their albums
         const indices = artistsData.artists.index;

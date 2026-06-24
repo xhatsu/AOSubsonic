@@ -164,7 +164,7 @@ export const LyricsViewer = () => {
           relaxScroll: true,
           hideOffscreen: true, // CRITICAL: Hides 90% of DOM nodes from GPU when offscreen
           blurInactive: false,
-          lightweight: false, // CRITICAL: Disables heavy translateY/drop-shadow effects
+          lightweight: true, // Reverting to false, plugin might be bugged on lightweight mode
         };
         rendererRef.current.displayLyrics(
           lyricsData,
@@ -263,7 +263,7 @@ export const LyricsViewer = () => {
 
       {/* Lyrics Source Pill */}
       {lyricsSource && currentSong && (
-        <div className="absolute bottom-[100px] right-6 z-[999] opacity-70 hover:opacity-100 transition-opacity duration-300 flex items-center gap-2 bg-zinc-950/80 backdrop-blur-md border border-white/10 shadow-lg rounded-full px-3 py-1.5 text-xs text-white/90">
+        <div className="absolute bottom-[100px] right-6 z-[999] opacity-0 group-hover:opacity-80 hover:!opacity-100 transition-all duration-300 flex items-center gap-2 bg-zinc-950/80 backdrop-blur-md border border-white/10 shadow-lg rounded-full px-3 py-1.5 text-xs text-white/90">
           {lyricsSource.startsWith('Fetching') ? (
             <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           ) : null}

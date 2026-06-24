@@ -41,7 +41,7 @@ function App() {
 
       {/* Floating Lyrics Panel */}
       <div
-        className={`fixed top-0 right-0 w-[450px] h-full border-l border-white/5 bg-zinc-950 shadow-2xl z-[100] transition-transform duration-300 ease-in-out ${showLyrics ? 'translate-x-0' : 'translate-x-full'} overflow-hidden`}
+        className={`fixed top-0 right-0 w-[450px] h-[calc(100vh-6rem)] border-l border-white/5 bg-zinc-950 shadow-2xl z-[100] transition-transform duration-300 ease-in-out ${showLyrics ? 'translate-x-0' : 'translate-x-full'} overflow-hidden`}
       >
         {/* Separate Background behind the transparent LyricsViewer */}
         {currentSong?.coverArtUrl && (
@@ -49,8 +49,11 @@ function App() {
             <img
               src={currentSong.coverArtUrl}
               alt=""
-              className="absolute inset-[-50%] w-[300%] h-[300%] object-cover opacity-80 translate-x-32"
-              style={{ filter: 'blur(100px) saturate(200%)' }}
+              className="absolute top-1/2 left-1/2 w-64 h-64 object-cover opacity-90"
+              style={{ 
+                filter: 'blur(8px) saturate(200%)',
+                transform: 'translate(-50%, -50%) scale(10)'
+              }}
             />
             <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/60 to-zinc-950/90" />
           </div>
@@ -62,7 +65,7 @@ function App() {
 
       {/* Floating Queue Panel */}
       <div
-        className={`fixed top-0 right-0 w-[400px] h-full border-l border-white/5 bg-zinc-950 shadow-2xl z-[110] transition-transform duration-300 ease-in-out ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 w-[400px] h-[calc(100vh-6rem)] border-l border-white/5 bg-zinc-950 shadow-2xl z-[110] transition-transform duration-300 ease-in-out ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <QueuePanel />
       </div>

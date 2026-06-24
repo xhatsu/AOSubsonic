@@ -95,8 +95,10 @@ export class SubsonicController {
     return this.request<any>('getAlbumList', { type, size, offset });
   }
 
-  async getRandomSongs(size: number = 40, offset: number = 0) {
-    return this.request<any>('getRandomSongs', { size, offset });
+  async getRandomSongs(size: number = 40, offset: number = 0, genre?: string) {
+    const params: Record<string, any> = { size, offset };
+    if (genre) params.genre = genre;
+    return this.request<any>('getRandomSongs', params);
   }
 
   async getGenres() {
