@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiRefreshCw, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiRefreshCw, FiEye, FiEyeOff, FiMoon, FiDroplet } from 'react-icons/fi';
 // @ts-ignore
 import LyricsPlusRenderer from '../utils/youlyplus/lyricsRenderer';
 import { fetchLyrics } from '../utils/lyricsFetcher';
@@ -14,6 +14,8 @@ export const LyricsViewer = () => {
   const themeColor = useUIStore((state) => state.themeColor);
   const showFps = useUIStore((state) => state.showFps);
   const toggleFps = useUIStore((state) => state.toggleFps);
+  const lyricsStyle = useUIStore((state) => state.lyricsStyle);
+  const setLyricsStyle = useUIStore((state) => state.setLyricsStyle);
 
   const rendererRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -195,17 +197,21 @@ export const LyricsViewer = () => {
   // Update theme color for the renderer dynamically
   useEffect(() => {
     const container = document.getElementById('lyrics-plus-container');
-    if (container && themeColor) {
-      container.style.setProperty('--lyplus-lyrics-pallete', themeColor);
+    if (container) {
+      if (lyricsStyle === 'clean') {
+        container.style.setProperty('--lyplus-lyrics-pallete', '#ffffff');
+      } else if (themeColor) {
+        container.style.setProperty('--lyplus-lyrics-pallete', themeColor);
+      }
     }
-  }, [themeColor, currentSong]);
+  }, [themeColor, currentSong, lyricsStyle]);
 
   const handleRefresh = () => {
     setForceResetKey(k => k + 1);
   };
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden relative group bg-transparent">
+    <div className={`w-full h-full flex flex-col items-center justify-center overflow-hidden relative group transition-colors duration-700 ${lyricsStyle === 'clean' ? 'bg-black' : 'bg-transparent'}`}>
       {/* FPS Counter */}
       {showFps && (
         <div
@@ -224,6 +230,14 @@ export const LyricsViewer = () => {
           title="Toggle FPS Counter"
         >
           {showFps ? <FiEyeOff className="text-lg" /> : <FiEye className="text-lg" />}
+        </button>
+
+        <button
+          onClick={() => setLyricsStyle(lyricsStyle === 'clean' ? 'dynamic' : 'clean')}
+          className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all"
+          title={lyricsStyle === 'clean' ? 'Switch to Dynamic Colors' : 'Switch to Clean Mode'}
+        >
+          {lyricsStyle === 'clean' ? <FiDroplet className="text-lg" /> : <FiMoon className="text-lg" />}
         </button>
 
         {currentSong && (

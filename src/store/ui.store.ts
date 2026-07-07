@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 type ViewState = 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail' | 'playlists' | 'playlistDetail' | 'search';
+export type LyricsStyle = 'dynamic' | 'clean';
 
 interface UIState {
   showLyrics: boolean;
@@ -12,6 +13,8 @@ interface UIState {
   setView: (view: ViewState) => void;
   showFps: boolean;
   toggleFps: () => void;
+  lyricsStyle: LyricsStyle;
+  setLyricsStyle: (style: LyricsStyle) => void;
   dominantColor: string | null;
   setDominantColor: (color: string | null) => void;
   
@@ -43,6 +46,8 @@ export const useUIStore = create<UIState>()(
       setView: (view) => set({ view }),
       showFps: false,
       toggleFps: () => set((state) => ({ showFps: !state.showFps })),
+      lyricsStyle: 'dynamic',
+      setLyricsStyle: (style) => set({ lyricsStyle: style }),
       dominantColor: null,
       setDominantColor: (color: string | null) => set({ dominantColor: color }),
       
