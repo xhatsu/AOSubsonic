@@ -64,12 +64,6 @@ docker pull xhatsu101/aosubsonic:1.4
 docker run -p 8080:80 xhatsu101/aosubsonic:1.4
 ```
 
-**Using Kubernetes:**
-A sample Kubernetes deployment is available in `aosubsonic-k8s.yaml`. It sets up a Deployment and Service for the web client.
-```bash
-kubectl apply -f aosubsonic-k8s.yaml
-```
-
 ## Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to open an issue or submit a pull request.
