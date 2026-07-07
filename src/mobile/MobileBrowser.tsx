@@ -6,19 +6,40 @@ import { useUIStore } from '../store/ui.store';
 import { usePlayerStore } from '../store/player.store';
 import { CachedImage } from '../components/CachedImage';
 import { FiMusic, FiUser, FiPlay, FiList, FiArrowLeft, FiSearch, FiX } from 'react-icons/fi';
+import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
 
 export const MobileBrowser = () => {
-  const { view, setView, selectedPlaylistId, setSelectedPlaylistId, selectedAlbumId, setSelectedAlbumId, setSelectedAlbumCover } = useUIStore();
+  const { view, setView, selectedPlaylistId, setSelectedPlaylistId, selectedAlbumId, setSelectedAlbumId, setSelectedAlbumCover, lyricsStyle, setLyricsStyle, showFps, toggleFps } = useUIStore();
   const playFromQueue = usePlayerStore(state => state.playFromQueue);
   const setQueue = usePlayerStore(state => state.setQueue);
   const play = usePlayerStore(state => state.play);
   const config = useAuthStore(state => state.config);
+  const logout = useAuthStore(state => state.logout);
   const ctrl = config ? new SubsonicController(config) : null;
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Cache state
+  const [cacheSize, setCacheSize] = useState<number>(0);
+
+  const refreshCacheSize = async () => {
+    const size = await getCacheSizeInMB();
+    setCacheSize(size);
+  };
+
+  const handleClearCache = async () => {
+    await clearImageCache();
+    await refreshCacheSize();
+  };
+
+  useEffect(() => {
+    if (view === 'settings') {
+      refreshCacheSize();
+    }
+  }, [view]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery), 400);
@@ -421,9 +442,85 @@ export const MobileBrowser = () => {
     );
   };
 
+  // ── Settings ──
+  const renderSettings = () => {
+    return (
+      <div className="flex flex-col p-6 space-y-8 pb-32">
+        <div className="space-y-4">
+          <h2 className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">Account & Server</h2>
+          <div className="bg-zinc-900 rounded-xl p-4 flex flex-col space-y-2">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-zinc-400">Server</span>
+              <span className="text-white truncate max-w-[60%]">{config?.serverUrl}</span>
+            </div>
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-zinc-400">Username</span>
+              <span className="text-white truncate max-w-[60%]">{config?.username}</span>
+            </div>
+          </div>
+          <button
+            onClick={() => logout()}
+            className="w-full bg-red-500/10 text-red-500 font-medium py-3 rounded-xl hover:bg-red-500/20 transition-colors"
+          >
+            Log Out
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <h2 className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">Appearance</h2>
+          
+          <div className="bg-zinc-900 rounded-xl divide-y divide-zinc-800">
+            <div className="p-4 flex items-center justify-between">
+              <div>
+                <div className="text-white font-medium text-sm">Clean Lyrics Mode</div>
+                <div className="text-zinc-500 text-xs mt-0.5">Pure black background, battery saving</div>
+              </div>
+              <button 
+                onClick={() => setLyricsStyle(lyricsStyle === 'clean' ? 'dynamic' : 'clean')}
+                className={`w-12 h-6 rounded-full transition-colors relative ${lyricsStyle === 'clean' ? 'bg-primary' : 'bg-zinc-700'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${lyricsStyle === 'clean' ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+            
+            <div className="p-4 flex items-center justify-between">
+              <div>
+                <div className="text-white font-medium text-sm">Show FPS Counter</div>
+                <div className="text-zinc-500 text-xs mt-0.5">Display performance metrics in lyrics view</div>
+              </div>
+              <button 
+                onClick={toggleFps}
+                className={`w-12 h-6 rounded-full transition-colors relative ${showFps ? 'bg-primary' : 'bg-zinc-700'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${showFps ? 'left-7' : 'left-1'}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h2 className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">Storage</h2>
+          <div className="bg-zinc-900 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <div className="text-white font-medium text-sm">Image Cache</div>
+              <div className="text-zinc-500 text-xs mt-0.5">{cacheSize.toFixed(2)} MB Used</div>
+            </div>
+            <button
+              onClick={handleClearCache}
+              className="px-4 py-2 bg-red-500/10 text-red-500 text-sm font-medium rounded-lg hover:bg-red-500/20 active:scale-95 transition-all"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Routing ──
   const renderContent = () => {
-    if (view === 'albums' || view === 'settings') return renderAlbums();
+    if (view === 'albums') return renderAlbums();
+    if (view === 'settings') return renderSettings();
     if (view === 'artists') return renderArtists();
     if (view === 'tracks') return renderTracks();
     if (view === 'playlists') return renderPlaylists();
@@ -448,7 +545,7 @@ export const MobileBrowser = () => {
   const isLibraryView = view === 'albums' || view === 'artists' || view === 'tracks' || view === 'settings';
 
   return (
-    <div className="flex flex-col h-full w-full">
+    <div className="flex flex-col min-h-full w-full pb-48">
       {/* Header/Tabs for Library */}
       {isLibraryView && (
         <div className="sticky top-0 z-20 bg-zinc-950/90 backdrop-blur-md pt-safe px-4 pb-2 border-b border-zinc-800">

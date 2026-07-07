@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { usePlayerStore } from '../store/player.store';
-import { FiChevronDown, FiList, FiPlay, FiPause, FiSkipBack, FiSkipForward, FiShuffle, FiFileText, FiMaximize2 } from 'react-icons/fi';
+import { FiChevronDown, FiList, FiPlay, FiPause, FiSkipBack, FiSkipForward, FiShuffle, FiFileText, FiMaximize2, FiMoon, FiDroplet } from 'react-icons/fi';
 import { CachedImage } from '../components/CachedImage';
 import { TrackProgressBar } from '../components/PlayerBar';
 import { LyricsViewer } from '../components/LyricsViewer';
+import { useUIStore } from '../store/ui.store';
 
 interface MobileNowPlayingProps {
   onClose: () => void;
@@ -13,6 +14,7 @@ interface MobileNowPlayingProps {
 export const MobileNowPlaying = ({ onClose, onOpenQueue }: MobileNowPlayingProps) => {
   const { queue, currentIndex, isPlaying, togglePlay, nextTrack, prevTrack, shuffleQueue } = usePlayerStore();
   const currentSong = queue[currentIndex];
+  const { lyricsStyle, setLyricsStyle } = useUIStore();
   
   // false = Cover Art, true = Lyrics
   const [showLyrics, setShowLyrics] = useState(false);
@@ -20,9 +22,9 @@ export const MobileNowPlaying = ({ onClose, onOpenQueue }: MobileNowPlayingProps
   if (!currentSong) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] bg-zinc-950 flex flex-col overflow-hidden animate-slide-up">
+    <div className={`fixed inset-0 z-[200] flex flex-col overflow-hidden animate-slide-up transition-colors duration-700 ${showLyrics && lyricsStyle === 'clean' ? 'bg-black' : 'bg-zinc-950'}`}>
       {/* Background Blur Effect */}
-      {currentSong.coverArtUrl && (
+      {currentSong.coverArtUrl && !(showLyrics && lyricsStyle === 'clean') && (
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-zinc-950">
           <img
             src={currentSong.coverArtUrl}
@@ -51,14 +53,14 @@ export const MobileNowPlaying = ({ onClose, onOpenQueue }: MobileNowPlayingProps
       </div>
 
       {/* Main Content Area (Cover or Lyrics) */}
-      <div className="flex-1 relative z-10 flex flex-col justify-center px-8 pb-8 overflow-hidden">
+      <div className="flex-1 relative z-10 flex flex-col px-8 pb-8 overflow-hidden min-h-0">
         {showLyrics ? (
-          <div className="w-full h-full relative" onClick={() => setShowLyrics(false)}>
+          <div className="w-full flex-1 min-h-0 relative -mx-4 px-4">
             <LyricsViewer />
           </div>
         ) : (
           <div 
-            className="w-full aspect-square bg-zinc-900 rounded-xl shadow-2xl overflow-hidden mt-auto mb-8 relative"
+            className="w-full aspect-square bg-zinc-900 rounded-xl shadow-2xl overflow-hidden mt-auto mb-8 relative flex-shrink-0"
             onClick={() => setShowLyrics(true)}
           >
             {currentSong.coverArtUrl ? (
@@ -72,21 +74,30 @@ export const MobileNowPlaying = ({ onClose, onOpenQueue }: MobileNowPlayingProps
         )}
 
         {/* Track Info */}
-        <div className="mb-6 mt-auto">
+        <div className="mb-6 mt-6 flex-shrink-0">
           <h2 className="text-2xl font-bold text-white truncate">{currentSong.title}</h2>
           <p className="text-zinc-400 text-lg truncate mt-1">{currentSong.artist}</p>
         </div>
 
         {/* Progress */}
-        <div className="mb-6">
+        <div className="mb-6 flex-shrink-0">
           <TrackProgressBar duration={currentSong.duration || 0} />
         </div>
 
         {/* Controls */}
-        <div className="flex items-center justify-between mb-8">
-          <button onClick={shuffleQueue} className="text-zinc-400 hover:text-white touch-target flex items-center justify-center">
-            <FiShuffle className="text-2xl" />
-          </button>
+        <div className="flex items-center justify-between mb-8 flex-shrink-0">
+          {showLyrics ? (
+            <button 
+              onClick={() => setLyricsStyle(lyricsStyle === 'clean' ? 'dynamic' : 'clean')}
+              className="text-zinc-400 hover:text-white touch-target flex items-center justify-center"
+            >
+              {lyricsStyle === 'clean' ? <FiDroplet className="text-2xl" /> : <FiMoon className="text-2xl" />}
+            </button>
+          ) : (
+            <button onClick={shuffleQueue} className="text-zinc-400 hover:text-white touch-target flex items-center justify-center">
+              <FiShuffle className="text-2xl" />
+            </button>
+          )}
           
           <div className="flex items-center space-x-6">
             <button onClick={prevTrack} className="text-white touch-target flex items-center justify-center">

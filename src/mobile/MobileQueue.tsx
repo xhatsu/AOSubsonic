@@ -1,13 +1,23 @@
 import { usePlayerStore } from '../store/player.store';
-import { FiX, FiTrash2, FiPlay } from 'react-icons/fi';
+import { FiX, FiTrash2, FiPlay, FiMenu } from 'react-icons/fi';
 import { CachedImage } from '../components/CachedImage';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
 
 interface MobileQueueProps {
   onClose: () => void;
 }
 
 export const MobileQueue = ({ onClose }: MobileQueueProps) => {
-  const { queue, currentIndex, playFromQueue, removeFromQueue, clearQueue } = usePlayerStore();
+  const { queue, currentIndex, playFromQueue, removeFromQueue, clearQueue, moveInQueue } = usePlayerStore();
+
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    const sourceIndex = result.source.index;
+    const destinationIndex = result.destination.index;
+    if (sourceIndex === destinationIndex) return;
+    moveInQueue(sourceIndex, destinationIndex);
+  };
 
   return (
     <div className="fixed inset-0 z-[250] bg-zinc-950 flex flex-col animate-slide-up">
@@ -36,46 +46,69 @@ export const MobileQueue = ({ onClose }: MobileQueueProps) => {
             <p>Queue is empty</p>
           </div>
         ) : (
-          <div className="flex flex-col pb-8">
-            {queue.map((track, index) => {
-              const isPlaying = index === currentIndex;
-              return (
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable droppableId="mobile-queue">
+              {(provided) => (
                 <div 
-                  key={`${track.id}-${index}`} 
-                  className={`flex items-center space-x-3 px-4 py-3 active:bg-zinc-800 group ${isPlaying ? 'bg-primary/10' : ''}`}
-                  onClick={() => playFromQueue(index)}
+                  className="flex flex-col pb-8 min-h-full"
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
                 >
-                  <div className="w-12 h-12 bg-zinc-800 rounded overflow-hidden flex-shrink-0 relative">
-                    <CachedImage id={track.album} url={track.coverArtUrl || ''} alt="Cover" className="w-full h-full object-cover" />
-                    {isPlaying && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <div className="w-4 h-4 text-primary animate-pulse">
-                          <FiPlay className="w-full h-full" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <div className={`text-sm truncate font-medium ${isPlaying ? 'text-primary' : 'text-white'}`}>
-                      {track.title}
-                    </div>
-                    <div className="text-zinc-400 text-xs truncate">
-                      {track.artist}
-                    </div>
-                  </div>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeFromQueue(index);
-                    }}
-                    className="w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-red-400 touch-target flex-shrink-0"
-                  >
-                    <FiTrash2 />
-                  </button>
+                  {queue.map((track, index) => {
+                    const isPlaying = index === currentIndex;
+                    return (
+                      <Draggable key={`${track.id}-${index}`} draggableId={`${track.id}-${index}`} index={index}>
+                        {(provided, snapshot) => (
+                          <div 
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            className={`flex items-center space-x-3 px-4 py-3 active:bg-zinc-800 group ${isPlaying ? 'bg-primary/10' : ''} ${snapshot.isDragging ? 'bg-zinc-900 shadow-2xl z-50 ring-1 ring-white/10 opacity-95' : 'bg-zinc-950'}`}
+                            onClick={() => playFromQueue(index)}
+                          >
+                            <div 
+                              {...provided.dragHandleProps}
+                              className="w-8 h-12 flex-shrink-0 flex items-center justify-center text-zinc-500 active:text-white touch-none"
+                              onClick={(e) => e.stopPropagation()} // Prevent playing song when clicking drag handle
+                            >
+                              <FiMenu className="text-lg" />
+                            </div>
+                            <div className="w-12 h-12 bg-zinc-800 rounded overflow-hidden flex-shrink-0 relative">
+                              <CachedImage id={track.album} url={track.coverArtUrl || ''} alt="Cover" className="w-full h-full object-cover" />
+                              {isPlaying && (
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <div className="w-4 h-4 text-primary animate-pulse">
+                                    <FiPlay className="w-full h-full" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                              <div className={`text-sm truncate font-medium ${isPlaying ? 'text-primary' : 'text-white'}`}>
+                                {track.title}
+                              </div>
+                              <div className="text-zinc-400 text-xs truncate">
+                                {track.artist}
+                              </div>
+                            </div>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFromQueue(index);
+                              }}
+                              className="w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-red-400 touch-target flex-shrink-0"
+                            >
+                              <FiTrash2 />
+                            </button>
+                          </div>
+                        )}
+                      </Draggable>
+                    );
+                  })}
+                  {provided.placeholder}
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </Droppable>
+          </DragDropContext>
         )}
       </div>
     </div>

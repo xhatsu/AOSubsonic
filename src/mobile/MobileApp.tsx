@@ -15,7 +15,7 @@ export const MobileApp = () => {
   return (
     <div className="flex flex-col h-screen w-full bg-zinc-950 text-zinc-100 overflow-hidden relative">
       {/* Main Browse Area */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden relative pb-32">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden relative">
         <MobileBrowser />
       </div>
 
