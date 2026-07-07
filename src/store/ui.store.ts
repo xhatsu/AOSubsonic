@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type ViewState = 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail';
+type ViewState = 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail' | 'playlists' | 'playlistDetail' | 'search';
 
 interface UIState {
   showLyrics: boolean;
@@ -14,6 +14,22 @@ interface UIState {
   toggleFps: () => void;
   dominantColor: string | null;
   setDominantColor: (color: string | null) => void;
+  
+  selectedAlbumId: string;
+  setSelectedAlbumId: (id: string) => void;
+  selectedAlbumCover: string;
+  setSelectedAlbumCover: (cover: string) => void;
+  
+  selectedArtistId: string;
+  setSelectedArtistId: (id: string) => void;
+  selectedArtistCover: string;
+  setSelectedArtistCover: (cover: string) => void;
+  
+  selectedPlaylistId: string;
+  setSelectedPlaylistId: (id: string) => void;
+  
+  selectedGenre: string;
+  setSelectedGenre: (genre: string) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -29,6 +45,22 @@ export const useUIStore = create<UIState>()(
       toggleFps: () => set((state) => ({ showFps: !state.showFps })),
       dominantColor: null,
       setDominantColor: (color: string | null) => set({ dominantColor: color }),
+      
+      selectedAlbumId: '',
+      setSelectedAlbumId: (id) => set({ selectedAlbumId: id }),
+      selectedAlbumCover: '',
+      setSelectedAlbumCover: (cover) => set({ selectedAlbumCover: cover }),
+      
+      selectedArtistId: '',
+      setSelectedArtistId: (id) => set({ selectedArtistId: id }),
+      selectedArtistCover: '',
+      setSelectedArtistCover: (cover) => set({ selectedArtistCover: cover }),
+      
+      selectedPlaylistId: '',
+      setSelectedPlaylistId: (id) => set({ selectedPlaylistId: id }),
+      
+      selectedGenre: '',
+      setSelectedGenre: (genre) => set({ selectedGenre: genre }),
     }),
     {
       name: 'ui-storage',

@@ -131,3 +131,27 @@ export const useSearchQuery = (query: string, artistCount = 10, albumCount = 10,
     enabled: !!controller && !!query && query.length > 0,
   });
 };
+
+export const useGetPlaylists = () => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['playlists', controller?.['config']?.serverUrl],
+    queryFn: async () => {
+      if (!controller) throw new Error('Not authenticated');
+      return controller.getPlaylists();
+    },
+    enabled: !!controller,
+  });
+};
+
+export const useGetPlaylist = (id: string | null) => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['playlist', id],
+    queryFn: async () => {
+      if (!controller || !id) throw new Error('Not authenticated or no ID');
+      return controller.getPlaylist(id);
+    },
+    enabled: !!controller && !!id,
+  });
+};

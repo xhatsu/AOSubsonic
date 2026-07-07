@@ -1,21 +1,30 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { useGetArtists, useGetAlbumList, useGetRandomSongsQuery, useGetAlbum, useSearchQuery, useGetArtistInfo2, useGetArtist, useGetGenres, useGetAlbumList2 } from '../api/hooks';
+import { useGetArtists, useGetAlbumList, useGetRandomSongsQuery, useGetAlbum, useSearchQuery, useGetArtistInfo2, useGetArtist, useGetGenres, useGetAlbumList2, useGetPlaylists, useGetPlaylist } from '../api/hooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth.store';
 import { SubsonicController } from '../api/subsonic';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiPlay, FiArrowLeft, FiSearch, FiX, FiMusic, FiTrash2, FiPlus } from 'react-icons/fi';
+import { FiPlay, FiArrowLeft, FiSearch, FiX, FiMusic, FiTrash2, FiPlus, FiList } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
 import { WikiImageFallback } from './WikiImageFallback';
 import { FastAverageColor } from 'fast-average-color';
 import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
+import { AiPlaylistModal } from './AiPlaylistModal';
 
 export const MainContent = () => {
-  const { view, setView } = useUIStore();
-  const [selectedAlbumId, setSelectedAlbumId] = useState<string>('');
-  const [selectedAlbumCover, setSelectedAlbumCover] = useState<string>('');
-  const [selectedArtistId, setSelectedArtistId] = useState<string>('');
-  const [selectedArtistCover, setSelectedArtistCover] = useState<string>('');
+  const { 
+    view, setView,
+    themeColor, setThemeColor,
+    selectedAlbumId, setSelectedAlbumId,
+    selectedAlbumCover, setSelectedAlbumCover,
+    selectedArtistId, setSelectedArtistId,
+    selectedArtistCover, setSelectedArtistCover,
+    selectedPlaylistId, setSelectedPlaylistId,
+    selectedGenre, setSelectedGenre
+  } = useUIStore();
+
+  const [isAiPlaylistModalOpen, setIsAiPlaylistModalOpen] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,14 +83,48 @@ export const MainContent = () => {
   const [artistPage, setArtistPage] = useState(0);
 
   // Genre states
-  const [selectedGenre, setSelectedGenre] = useState<string>('');
   const [genreAlbumPage, setGenreAlbumPage] = useState(0);
 
   // View history tracking
-  const [lastView, setLastView] = useState<'albums' | 'genres' | 'genreDetail' | 'artists' | 'tracks'>('albums');
+  const [lastView, setLastView] = useState<'albums' | 'genres' | 'genreDetail' | 'artists' | 'tracks' | 'playlists'>('albums');
+
+  // Context Menu state
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; track: any } | null>(null);
+  const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
 
   useEffect(() => {
-    if (view !== 'albumDetail' && view !== 'artistDetail' && view !== 'settings' && view !== 'genreDetail') {
+    const handleClick = () => {
+      if (contextMenu?.visible) setContextMenu(null);
+    };
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [contextMenu]);
+
+  const handleContextMenu = (e: React.MouseEvent, track: any) => {
+    e.preventDefault();
+    setPlaylistSearchQuery('');
+    setContextMenu({
+      visible: true,
+      x: e.pageX,
+      y: e.pageY,
+      track
+    });
+  };
+
+  const handleAddSongToPlaylist = async (playlistId: string, trackId: string) => {
+    if (!ctrl) return;
+    try {
+      await ctrl.updatePlaylist(playlistId, undefined, undefined, undefined, [trackId]);
+      queryClient.invalidateQueries({ queryKey: ['playlist', playlistId] });
+      alert('Added to playlist!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to add to playlist');
+    }
+  };
+
+  useEffect(() => {
+    if (view !== 'albumDetail' && view !== 'artistDetail' && view !== 'settings' && view !== 'genreDetail' && view !== 'playlistDetail') {
       setLastView(view as any);
     }
   }, [view]);
@@ -110,6 +153,10 @@ export const MainContent = () => {
   const { data: artistDetailData, isLoading: isLoadingArtistDetail } = useGetArtist(selectedArtistId);
   const { data: artistInfoData, isLoading: isLoadingArtistInfo } = useGetArtistInfo2(selectedArtistId);
   const { data: searchData, isLoading: isLoadingSearch } = useSearchQuery(debouncedSearchQuery);
+
+  const { data: playlistsData, isLoading: isLoadingPlaylists } = useGetPlaylists();
+  const { data: playlistDetailData, isLoading: isLoadingPlaylistDetail } = useGetPlaylist(selectedPlaylistId || null);
+  const queryClient = useQueryClient();
 
   // Genres query hooks
   const { data: genresData, isLoading: isLoadingGenres } = useGetGenres();
@@ -219,6 +266,91 @@ export const MainContent = () => {
     setSelectedAlbumId(albumId);
     setSelectedAlbumCover(coverArt || albumId);
     setView('albumDetail');
+  };
+
+  const handleOpenPlaylist = (playlistId: string) => {
+    setSelectedPlaylistId(playlistId);
+    setView('playlistDetail');
+  };
+
+  const handleCreatePlaylist = async () => {
+    if (!ctrl) return;
+    const name = prompt('Enter new playlist name:');
+    if (!name) return;
+    try {
+      await ctrl.createPlaylist(name);
+      queryClient.invalidateQueries({ queryKey: ['playlists'] });
+    } catch (e) {
+      console.error(e);
+      alert('Failed to create playlist');
+    }
+  };
+
+  const handleCreatePlaylistFromGenre = async (genre: string) => {
+    if (!ctrl) return;
+    const name = prompt('Enter new playlist name:', `${genre} Mix`);
+    if (!name) return;
+    
+    try {
+      const data = await ctrl.getSongsByGenre(genre, 500, 0);
+      const rawSongs = data.songsByGenre?.song;
+      const songs = rawSongs ? (Array.isArray(rawSongs) ? rawSongs : [rawSongs]) : [];
+      
+      if (songs.length === 0) {
+        alert('No songs found for this genre to add.');
+        return;
+      }
+      
+      const songIds = songs.map((s: any) => s.id);
+      await ctrl.createPlaylist(name, songIds);
+      queryClient.invalidateQueries({ queryKey: ['playlists'] });
+      alert(`Created playlist "${name}" with ${songs.length} songs!`);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to create playlist from genre');
+    }
+  };
+
+  const handleDeletePlaylist = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!ctrl) return;
+    if (!confirm('Are you sure you want to delete this playlist?')) return;
+    try {
+      await ctrl.deletePlaylist(id);
+      queryClient.invalidateQueries({ queryKey: ['playlists'] });
+      if (view === 'playlistDetail' && selectedPlaylistId === id) {
+        setView('playlists');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to delete playlist');
+    }
+  };
+
+  const handleRemoveFromPlaylist = async (playlistId: string, index: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!ctrl) return;
+    try {
+      await ctrl.updatePlaylist(playlistId, undefined, undefined, undefined, undefined, index);
+      queryClient.invalidateQueries({ queryKey: ['playlist', playlistId] });
+    } catch (e) {
+      console.error(e);
+      alert('Failed to remove song');
+    }
+  };
+
+  const handleAddQueueToPlaylist = async (playlistId: string) => {
+    if (!ctrl) return;
+    const songIds = queue.map(s => s.id);
+    if (songIds.length === 0) return alert('Queue is empty');
+    try {
+      await ctrl.updatePlaylist(playlistId, undefined, undefined, undefined, songIds);
+      queryClient.invalidateQueries({ queryKey: ['playlist', playlistId] });
+      alert('Added queue to playlist!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to add queue to playlist');
+    }
   };
 
   const handlePlayAlbumList = (songs: any[], startIndex: number = 0) => {
@@ -385,7 +517,7 @@ export const MainContent = () => {
       <div className="flex flex-col flex-1">
         <div className="flex flex-col space-y-2 mt-6">
           {sortedTracks.map((track: any, index: number) => (
-            <div key={track.id} onClick={() => handlePlayAlbumList(sortedTracks, index)} className="group flex items-center p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-colors">
+            <div key={track.id} onContextMenu={(e) => handleContextMenu(e, track)} onClick={() => handlePlayAlbumList(sortedTracks, index)} className="group flex items-center p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-colors">
               <div className="w-12 h-12 bg-zinc-800 rounded flex-shrink-0 flex items-center justify-center relative overflow-hidden mr-4">
                 {track.coverArt && ctrl ? (
                   <CachedImage id={track.coverArt} url={ctrl.getCoverArtUrl(track.coverArt)} alt={track.title} className="w-full h-full object-cover" />
@@ -482,6 +614,7 @@ export const MainContent = () => {
                       {searchSongs.slice(0, 10).map((track: any, index: number) => (
                         <div
                           key={track.id}
+                          onContextMenu={(e) => handleContextMenu(e, track)}
                           className="group flex items-center p-2 hover:bg-zinc-700/50 rounded-lg cursor-pointer transition-colors"
                           onClick={() => {
                             setShowDropdown(false);
@@ -597,7 +730,15 @@ export const MainContent = () => {
           <FiArrowLeft className="mr-2" /> Back to Genres
         </button>
 
-        <h2 className="text-3xl font-bold text-white mb-6">Genre: {selectedGenre}</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-3xl font-bold text-white">Genre: {selectedGenre}</h2>
+          <button 
+            onClick={() => handleCreatePlaylistFromGenre(selectedGenre)}
+            className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-medium transition-colors border border-zinc-700/50 flex items-center shadow-lg active:scale-95 cursor-pointer"
+          >
+            <FiPlus className="mr-2" /> Create Playlist Mix
+          </button>
+        </div>
 
         {albums.length === 0 ? (
           <div className="text-zinc-400 mt-4">No albums found for this genre.</div>
@@ -688,7 +829,7 @@ export const MainContent = () => {
 
         <div className="flex flex-col space-y-1">
           {songs.map((track: any, index: number) => (
-            <div key={track.id} onClick={() => handlePlayAlbumList(songs, index)} className="group flex items-center p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-colors">
+            <div key={track.id} onContextMenu={(e) => handleContextMenu(e, track)} onClick={() => handlePlayAlbumList(songs, index)} className="group flex items-center p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-colors">
               <div className="w-8 text-center text-zinc-500 group-hover:hidden">{index + 1}</div>
               <div className="w-8 text-center text-white hidden group-hover:block"><FiPlay /></div>
               <div className="flex-1 min-w-0 ml-4">
@@ -800,6 +941,128 @@ export const MainContent = () => {
     );
   };
 
+  const renderPlaylists = () => {
+    if (isLoadingPlaylists) return <div className="text-zinc-400 mt-4">Loading playlists...</div>;
+    const playlists = playlistsData?.playlists?.playlist || [];
+    const allPlaylists = Array.isArray(playlists) ? playlists : (playlists ? [playlists] : []);
+
+    return (
+      <div className="flex flex-col flex-1 mt-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          <div onClick={handleCreatePlaylist} className="group cursor-pointer p-4 bg-zinc-800/30 hover:bg-zinc-800/60 rounded-xl transition-colors border border-dashed border-zinc-700 hover:border-primary/50 flex flex-col items-center justify-center min-h-[240px]">
+            <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <FiPlus className="text-2xl text-zinc-400 group-hover:text-primary" />
+            </div>
+            <h3 className="font-semibold text-white">Create Playlist</h3>
+          </div>
+          
+          <div onClick={() => setIsAiPlaylistModalOpen(true)} className="group cursor-pointer p-4 bg-zinc-800/30 hover:bg-zinc-800/60 rounded-xl transition-colors border border-dashed border-primary/30 hover:border-primary/70 flex flex-col items-center justify-center min-h-[240px] relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="w-16 h-16 rounded-full bg-zinc-800 border border-primary/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform relative z-10">
+              <FiMusic className="text-2xl text-primary" />
+            </div>
+            <h3 className="font-semibold text-white relative z-10">AI Playlist</h3>
+            <p className="text-zinc-400 text-xs mt-2 text-center px-2 relative z-10">Create with LLM prompt</p>
+          </div>
+
+          {allPlaylists.map((pl: any) => (
+            <div key={pl.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors relative" onClick={() => handleOpenPlaylist(pl.id)}>
+              <div className="aspect-square bg-zinc-700 rounded-lg mb-4 shadow-lg group-hover:shadow-xl transition-shadow flex items-center justify-center overflow-hidden">
+                {pl.coverArt && ctrl ? (
+                  <CachedImage id={pl.coverArt} url={ctrl.getCoverArtUrl(pl.coverArt)} alt={pl.name} className="w-full h-full object-cover" />
+                ) : (
+                  <FiList className="text-4xl text-zinc-500" />
+                )}
+              </div>
+              <h3 className="font-semibold text-white truncate pr-8">{pl.name}</h3>
+              <p className="text-zinc-400 text-sm mt-1">{pl.songCount} tracks</p>
+              
+              <button 
+                onClick={(e) => handleDeletePlaylist(pl.id, e)}
+                className="absolute bottom-5 right-4 p-2 text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity rounded-full hover:bg-zinc-700"
+                title="Delete Playlist"
+              >
+                <FiTrash2 />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPlaylistDetail = () => {
+    if (isLoadingPlaylistDetail) return <div className="text-zinc-400 mt-4">Loading playlist...</div>;
+    const playlist = playlistDetailData?.playlist;
+    if (!playlist) return <div className="text-zinc-400 mt-4">Playlist not found.</div>;
+    const songs = playlist.entry || [];
+    const songArray = Array.isArray(songs) ? songs : (songs ? [songs] : []);
+
+    return (
+      <div className="flex flex-col mt-4 pb-10">
+        <button onClick={() => setView('playlists')} className="flex items-center text-white hover:text-white/80 font-medium mb-6 w-fit transition-colors drop-shadow-md">
+          <FiArrowLeft className="mr-2" /> Back to Playlists
+        </button>
+
+        <div className="flex items-end space-x-6 mb-8 mt-4 relative z-10">
+          <div className="w-48 h-48 bg-zinc-800 rounded-lg shadow-2xl overflow-hidden flex-shrink-0 flex items-center justify-center">
+            {playlist.coverArt && ctrl ? (
+              <CachedImage id={playlist.coverArt} url={ctrl.getCoverArtUrl(playlist.coverArt)} alt={playlist.name} className="w-full h-full object-cover" />
+            ) : (
+              <FiList className="text-6xl text-zinc-600" />
+            )}
+          </div>
+          <div className="flex-1">
+            <h2 className="text-4xl font-bold text-white mb-2">{playlist.name}</h2>
+            <p className="text-zinc-400 text-lg mb-4">{songArray.length} tracks • {Math.floor((playlist.duration || 0) / 60)} minutes</p>
+            <div className="flex space-x-4">
+              <button onClick={() => handlePlayAlbumList(songArray, 0)} className="bg-primary hover:bg-purple-600 text-white px-6 py-3 rounded-full font-bold transition-colors flex items-center" disabled={songArray.length === 0}>
+                <FiPlay className="mr-2" /> Play All
+              </button>
+              <button onClick={() => handleAddQueueToPlaylist(playlist.id)} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-full font-bold transition-colors flex items-center border border-zinc-700/50">
+                <FiPlus className="mr-2" /> Add Queue to Playlist
+              </button>
+              <button onClick={(e) => handleDeletePlaylist(playlist.id, e)} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-6 py-3 rounded-full font-bold transition-colors flex items-center">
+                <FiTrash2 className="mr-2" /> Delete Playlist
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col space-y-1">
+          {songArray.length === 0 && <div className="text-zinc-400 py-4">This playlist is empty.</div>}
+          {songArray.map((track: any, index: number) => (
+            <div key={`${track.id}-${index}`} onContextMenu={(e) => handleContextMenu(e, track)} onClick={() => handlePlayAlbumList(songArray, index)} className="group flex items-center p-3 rounded-lg hover:bg-zinc-800/50 cursor-pointer transition-colors">
+              <div className="w-8 text-center text-zinc-500 group-hover:hidden">{index + 1}</div>
+              <div className="w-8 text-center text-white hidden group-hover:block"><FiPlay /></div>
+              
+              <div className="w-10 h-10 bg-zinc-800 rounded flex-shrink-0 flex items-center justify-center overflow-hidden mx-3">
+                {track.coverArt && ctrl ? (
+                  <CachedImage id={track.coverArt} url={ctrl.getCoverArtUrl(track.coverArt)} alt={track.title} className="w-full h-full object-cover" />
+                ) : <FiMusic className="text-zinc-500" />}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <h4 className="text-white font-medium truncate">{track.title}</h4>
+                <p className="text-zinc-400 text-sm truncate">{track.artist} • {track.album}</p>
+              </div>
+              <div className="flex items-center justify-end space-x-2 text-zinc-500 text-sm">
+                <span>{Math.floor((track.duration || 0) / 60)}:{((track.duration || 0) % 60).toString().padStart(2, '0')}</span>
+                <button
+                  onClick={(e) => handleRemoveFromPlaylist(playlist.id, index, e)}
+                  className="p-2 hover:bg-zinc-700 rounded-full text-zinc-400 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                  title="Remove from playlist"
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // Background Color Extraction
   const dominantColor = useUIStore(state => state.dominantColor);
   const setDominantColor = useUIStore(state => state.setDominantColor);
@@ -853,8 +1116,32 @@ export const MainContent = () => {
       {view === 'settings' ? (
         <div className="flex-1">
           <h2 className="text-3xl font-bold text-white mb-8">Settings</h2>
-          <div className="max-w-2xl bg-zinc-800/50 rounded-2xl p-8 border border-zinc-700">
-            <h3 className="text-xl font-bold text-white mb-6">Image Cache</h3>
+          <div className="max-w-2xl bg-zinc-800/50 rounded-2xl p-8 border border-zinc-700 space-y-10">
+            
+            {/* Theme Settings */}
+            <div>
+              <h3 className="text-xl font-bold text-white mb-2">Theme Color</h3>
+              <p className="text-zinc-400 text-sm mb-6">
+                Customize the primary accent color of the application.
+              </p>
+              <div className="flex items-center space-x-4 bg-zinc-900/50 p-6 rounded-xl">
+                <input
+                  type="color"
+                  value={themeColor}
+                  onChange={(e) => setThemeColor(e.target.value)}
+                  className="w-14 h-14 rounded cursor-pointer bg-transparent border-0 p-0"
+                  title="Choose your theme color"
+                />
+                <div>
+                  <span className="text-sm text-zinc-400 block mb-1">Hex Code</span>
+                  <span className="text-xl text-white font-mono uppercase">{themeColor}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cache Settings */}
+            <div>
+              <h3 className="text-xl font-bold text-white mb-2">Image Cache</h3>
             <p className="text-zinc-400 text-sm mb-6">
               We aggressively cache album covers locally to ensure they load instantly across sessions without hitting the network.
             </p>
@@ -869,6 +1156,7 @@ export const MainContent = () => {
               >
                 <FiTrash2 className="mr-2" /> Clear Cache
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -960,9 +1248,80 @@ export const MainContent = () => {
           {view === 'artistDetail' && renderArtistDetail()}
           {view === 'genres' && renderGenres()}
           {view === 'genreDetail' && renderGenreDetail()}
+          {view === 'playlists' && renderPlaylists()}
+          {view === 'playlistDetail' && renderPlaylistDetail()}
         </>
       )}
       </div>
+
+      {contextMenu?.visible && (
+        <div
+          className="fixed bg-zinc-800/95 backdrop-blur-xl border border-zinc-700 rounded-xl shadow-2xl z-[9999] py-2 min-w-[200px]"
+          style={{ 
+            top: Math.min(contextMenu.y, window.innerHeight - 300), 
+            left: Math.min(contextMenu.x, window.innerWidth - 220) 
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full flex items-center px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors"
+            onClick={(e) => {
+              handleAddToQueue(e as any, contextMenu.track);
+              setContextMenu(null);
+            }}
+          >
+            <FiPlus className="mr-3" /> Add to Queue
+          </button>
+          
+          <div className="px-4 py-2 mt-1 text-xs font-bold text-zinc-500 uppercase tracking-wider border-t border-zinc-700/50 pt-3">
+            Add to Playlist
+          </div>
+          <div className="px-3 pb-2">
+            <input
+              type="text"
+              placeholder="Search playlists..."
+              value={playlistSearchQuery}
+              onChange={(e) => setPlaylistSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              className="w-full bg-zinc-900/50 border border-zinc-700/50 text-white text-xs rounded-md px-3 py-1.5 focus:outline-none focus:border-primary transition-colors"
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+            {playlistsData?.playlists?.playlist ? (
+              (() => {
+                const allPlaylists = Array.isArray(playlistsData.playlists.playlist) ? playlistsData.playlists.playlist : [playlistsData.playlists.playlist];
+                const filtered = allPlaylists.filter((pl: any) => pl.name.toLowerCase().includes(playlistSearchQuery.toLowerCase()));
+                
+                if (filtered.length === 0) {
+                  return <div className="px-4 py-2 text-sm text-zinc-500">No matching playlists</div>;
+                }
+
+                return filtered.slice(0, 3).map((pl: any) => (
+                  <button
+                    key={pl.id}
+                    className="w-full flex items-center px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors truncate"
+                    onClick={() => {
+                      handleAddSongToPlaylist(pl.id, contextMenu.track.id);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <FiList className="mr-3 text-zinc-500 flex-shrink-0" />
+                    <span className="truncate">{pl.name}</span>
+                  </button>
+                ));
+              })()
+            ) : (
+              <div className="px-4 py-2 text-sm text-zinc-500">No playlists found</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <AiPlaylistModal 
+        isOpen={isAiPlaylistModalOpen} 
+        onClose={() => setIsAiPlaylistModalOpen(false)} 
+        ctrl={ctrl} 
+      />
     </div>
   );
 };

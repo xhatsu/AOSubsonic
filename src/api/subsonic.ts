@@ -12,7 +12,7 @@ export interface SubsonicConfig {
 }
 
 const DEFAULT_VERSION = '1.16.1';
-const DEFAULT_CLIENT = 'OSClientLite';
+const DEFAULT_CLIENT = 'AOSubsonic';
 
 // Module-level cache to ensure identical URLs for browser caching of images
 let globalSalt: string | null = null;
@@ -52,8 +52,18 @@ export class SubsonicController {
     const url = `${this.config.serverUrl}/rest/${endpoint}`;
     
     try {
+      const searchParams = new URLSearchParams();
+      const allParams = { ...authParams, ...params };
+      for (const [key, value] of Object.entries(allParams)) {
+        if (Array.isArray(value)) {
+          value.forEach(v => searchParams.append(key, v.toString()));
+        } else if (value !== undefined) {
+          searchParams.append(key, value.toString());
+        }
+      }
+
       const response = await axios.get(url, {
-        params: { ...authParams, ...params },
+        params: searchParams,
       });
       
       const data = response.data['subsonic-response'];
@@ -65,6 +75,26 @@ export class SubsonicController {
       console.error(`Subsonic API Error (${endpoint}):`, error);
       throw error;
     }
+  }
+
+  async getPlaylists() {
+    return this.request<any>('getPlaylists');
+  }
+
+  async getPlaylist(id: string) {
+    return this.request<any>('getPlaylist', { id });
+  }
+
+  async createPlaylist(name: string, songId?: string | string[]) {
+    return this.request<any>('createPlaylist', { name, songId });
+  }
+
+  async updatePlaylist(playlistId: string, name?: string, comment?: string, isPublic?: boolean, songIdToAdd?: string | string[], songIndexToRemove?: number | number[]) {
+    return this.request<any>('updatePlaylist', { playlistId, name, comment, public: isPublic, songIdToAdd, songIndexToRemove });
+  }
+
+  async deletePlaylist(id: string) {
+    return this.request<any>('deletePlaylist', { id });
   }
 
   async ping() {
@@ -99,6 +129,10 @@ export class SubsonicController {
     const params: Record<string, any> = { size, offset };
     if (genre) params.genre = genre;
     return this.request<any>('getRandomSongs', params);
+  }
+
+  async getSongsByGenre(genre: string, count: number = 50, offset: number = 0) {
+    return this.request<any>('getSongsByGenre', { genre, count, offset });
   }
 
   async getGenres() {

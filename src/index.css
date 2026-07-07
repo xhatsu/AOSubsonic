@@ -19,3 +19,18 @@ body {
   margin: 0;
   padding: 0;
 }
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  body {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    overscroll-behavior-y: none;
+  }
+  
+  /* Touch target helpers */
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}

@@ -28,6 +28,7 @@ interface PlayerState {
   addToQueue: (song: QueueSong) => void;
   addListToQueue: (songs: QueueSong[]) => void;
   removeFromQueue: (index: number) => void;
+  moveInQueue: (fromIndex: number, toIndex: number) => void;
   clearQueue: () => void;
   playFromQueue: (index: number) => void;
   toggleQueue: () => void;
@@ -36,6 +37,7 @@ interface PlayerState {
   togglePlay: () => void;
   nextTrack: () => void;
   prevTrack: () => void;
+  shuffleQueue: () => void;
   setVolume: (vol: number) => void;
 }
 
@@ -63,6 +65,24 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       isPlaying: newQueue.length > 0 ? state.isPlaying : false
     };
   }),
+  moveInQueue: (fromIndex, toIndex) => set((state) => {
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= state.queue.length || toIndex < 0 || toIndex >= state.queue.length) return state;
+    
+    const newQueue = [...state.queue];
+    const [movedItem] = newQueue.splice(fromIndex, 1);
+    newQueue.splice(toIndex, 0, movedItem);
+    
+    let newIndex = state.currentIndex;
+    if (state.currentIndex === fromIndex) {
+      newIndex = toIndex;
+    } else if (state.currentIndex > fromIndex && state.currentIndex <= toIndex) {
+      newIndex--;
+    } else if (state.currentIndex < fromIndex && state.currentIndex >= toIndex) {
+      newIndex++;
+    }
+    
+    return { queue: newQueue, currentIndex: newIndex };
+  }),
   clearQueue: () => set({ queue: [], currentIndex: 0, isPlaying: false }),
   playFromQueue: (index) => set({ currentIndex: index, isPlaying: true }),
   toggleQueue: () => set((state) => ({ showQueue: !state.showQueue })),
@@ -80,6 +100,24 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       return { currentIndex: state.currentIndex - 1, isPlaying: true };
     }
     return state;
+  }),
+  shuffleQueue: () => set((state) => {
+    if (state.queue.length <= 1) return state;
+    
+    // Get the current song so it stays at the top/current index
+    const currentSong = state.queue[state.currentIndex];
+    const unplayedQueue = state.queue.filter((_, idx) => idx !== state.currentIndex);
+    
+    // Fisher-Yates shuffle
+    for (let i = unplayedQueue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [unplayedQueue[i], unplayedQueue[j]] = [unplayedQueue[j], unplayedQueue[i]];
+    }
+    
+    return {
+      queue: [currentSong, ...unplayedQueue],
+      currentIndex: 0
+    };
   }),
   setVolume: (vol) => {
     if (typeof window !== 'undefined') {

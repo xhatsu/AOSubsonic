@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiFileText, FiMaximize2, FiList } from 'react-icons/fi';
+import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiFileText, FiMaximize2, FiList, FiShuffle } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
 
-const TrackProgressBar = ({ duration: propDuration }: { duration: number }) => {
+export const TrackProgressBar = ({ duration: propDuration }: { duration: number }) => {
   const [audioDuration, setAudioDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -85,7 +85,7 @@ const TrackProgressBar = ({ duration: propDuration }: { duration: number }) => {
 };
 
 export const PlayerBar = () => {
-  const { queue, currentIndex, isPlaying, togglePlay, nextTrack, prevTrack, volume, setVolume, showQueue, toggleQueue } = usePlayerStore();
+  const { queue, currentIndex, isPlaying, togglePlay, nextTrack, prevTrack, shuffleQueue, volume, setVolume, showQueue, toggleQueue } = usePlayerStore();
   const { showLyrics, toggleLyrics } = useUIStore();
   const currentSong = queue[currentIndex];
 
@@ -116,6 +116,9 @@ export const PlayerBar = () => {
       {/* Controls */}
       <div className="flex flex-col items-center justify-center w-1/3">
         <div className={`flex items-center space-x-6 ${!currentSong ? 'opacity-50 pointer-events-none' : ''}`}>
+          <button onClick={shuffleQueue} className="text-zinc-400 hover:text-white transition-colors" title="Shuffle Queue">
+            <FiShuffle className="text-lg" />
+          </button>
           <button onClick={prevTrack} className="text-zinc-400 hover:text-white transition-colors">
             <FiSkipBack className="text-xl" />
           </button>
