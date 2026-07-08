@@ -84,7 +84,7 @@ export const HomePage = () => {
       img.crossOrigin = 'Anonymous';
       img.src = ctrl.getCoverArtUrl(topAlbum.coverArt);
       img.onload = () => {
-        Vibrant.from(img).getPalette().then(palette => {
+        Vibrant.from(img).clearFilters().getPalette().then(palette => {
           // Extract all valid swatches and sort by population to find the true dominant color
           const swatches = Object.values(palette).filter(s => s !== null);
           if (swatches.length > 0) {

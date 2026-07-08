@@ -13,7 +13,7 @@ export const MobileApp = () => {
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   
   return (
-    <div className="flex flex-col h-screen w-full bg-zinc-950 text-zinc-100 overflow-hidden relative">
+    <div className="fixed inset-0 flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
       {/* Main Browse Area */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden relative">
         <MobileBrowser />
