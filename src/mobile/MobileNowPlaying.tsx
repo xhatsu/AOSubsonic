@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { usePlayerStore } from '../store/player.store';
-import { FiChevronDown, FiList, FiPlay, FiPause, FiSkipBack, FiSkipForward, FiShuffle, FiFileText, FiMaximize2, FiMoon, FiDroplet } from 'react-icons/fi';
+import { FiChevronDown, FiList, FiPlay, FiPause, FiSkipBack, FiSkipForward, FiShuffle, FiMic, FiMaximize2, FiMoon, FiDroplet } from 'react-icons/fi';
 import { CachedImage } from '../components/CachedImage';
 import { TrackProgressBar } from '../components/PlayerBar';
 import { LyricsViewer } from '../components/LyricsViewer';
@@ -118,7 +118,7 @@ export const MobileNowPlaying = ({ onClose, onOpenQueue }: MobileNowPlayingProps
             onClick={() => setShowLyrics(!showLyrics)} 
             className={`touch-target flex items-center justify-center ${showLyrics ? 'text-primary' : 'text-zinc-400 hover:text-white'}`}
           >
-            <FiFileText className="text-2xl" />
+            <FiMic className="text-2xl" />
           </button>
         </div>
       </div>

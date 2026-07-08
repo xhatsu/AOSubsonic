@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type ViewState = 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail' | 'playlists' | 'playlistDetail' | 'search';
+type ViewState = 'home' | 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail' | 'playlists' | 'playlistDetail' | 'search';
 export type LyricsStyle = 'dynamic' | 'clean';
 
 interface UIState {
@@ -33,6 +33,11 @@ interface UIState {
   
   selectedGenre: string;
   setSelectedGenre: (genre: string) => void;
+
+  llmProvider: 'gemini' | 'openai' | 'manual';
+  setLlmProvider: (provider: 'gemini' | 'openai' | 'manual') => void;
+  llmApiKey: string;
+  setLlmApiKey: (key: string) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -42,7 +47,7 @@ export const useUIStore = create<UIState>()(
       toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
       themeColor: '#aa3bff',
       setThemeColor: (color: string) => set({ themeColor: color }),
-      view: 'albums',
+      view: 'home',
       setView: (view) => set({ view }),
       showFps: false,
       toggleFps: () => set((state) => ({ showFps: !state.showFps })),
@@ -66,6 +71,11 @@ export const useUIStore = create<UIState>()(
       
       selectedGenre: '',
       setSelectedGenre: (genre) => set({ selectedGenre: genre }),
+
+      llmProvider: 'gemini',
+      setLlmProvider: (provider) => set({ llmProvider: provider }),
+      llmApiKey: '',
+      setLlmApiKey: (key) => set({ llmApiKey: key }),
     }),
     {
       name: 'ui-storage',

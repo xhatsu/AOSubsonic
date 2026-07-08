@@ -7,9 +7,11 @@ import { usePlayerStore } from '../store/player.store';
 import { CachedImage } from '../components/CachedImage';
 import { FiMusic, FiUser, FiPlay, FiList, FiArrowLeft, FiSearch, FiX } from 'react-icons/fi';
 import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
+import { HomePage } from '../components/HomePage';
+import { useHistoryStore } from '../store/history.store';
 
 export const MobileBrowser = () => {
-  const { view, setView, selectedPlaylistId, setSelectedPlaylistId, selectedAlbumId, setSelectedAlbumId, setSelectedAlbumCover, lyricsStyle, setLyricsStyle, showFps, toggleFps } = useUIStore();
+  const { view, setView, selectedPlaylistId, setSelectedPlaylistId, selectedAlbumId, setSelectedAlbumId, setSelectedAlbumCover, lyricsStyle, setLyricsStyle, showFps, toggleFps, llmProvider, setLlmProvider, llmApiKey, setLlmApiKey } = useUIStore();
   const playFromQueue = usePlayerStore(state => state.playFromQueue);
   const setQueue = usePlayerStore(state => state.setQueue);
   const play = usePlayerStore(state => state.play);
@@ -24,10 +26,12 @@ export const MobileBrowser = () => {
 
   // Cache state
   const [cacheSize, setCacheSize] = useState<number>(0);
+  const [historySize, setHistorySize] = useState<number>(0);
 
   const refreshCacheSize = async () => {
     const size = await getCacheSizeInMB();
     setCacheSize(size);
+    setHistorySize(useHistoryStore.getState().getHistorySizeKB() / 1024);
   };
 
   const handleClearCache = async () => {
@@ -512,6 +516,53 @@ export const MobileBrowser = () => {
               Clear
             </button>
           </div>
+          <div className="bg-zinc-900 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <div className="text-white font-medium text-sm">Listening History</div>
+              <div className="text-zinc-500 text-xs mt-0.5">{historySize.toFixed(2)} KB Used</div>
+            </div>
+            <button
+              onClick={() => {
+                if(confirm('Clear history?')) {
+                  useHistoryStore.getState().clearHistory();
+                  setHistorySize(0);
+                }
+              }}
+              className="px-4 py-2 bg-red-500/10 text-red-500 text-sm font-medium rounded-lg hover:bg-red-500/20 active:scale-95 transition-all"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4 mb-10">
+          <h2 className="text-sm uppercase tracking-widest text-zinc-500 font-semibold">AI Provider</h2>
+          <div className="bg-zinc-900 rounded-xl p-4 flex flex-col space-y-4">
+            <div className="flex flex-col space-y-2">
+              <label className="text-sm text-zinc-400">Provider</label>
+              <select 
+                value={llmProvider} 
+                onChange={(e) => setLlmProvider(e.target.value as any)}
+                className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg text-sm w-full outline-none"
+              >
+                <option value="gemini">Google Gemini</option>
+                <option value="openai">OpenAI (ChatGPT)</option>
+                <option value="manual">Manual</option>
+              </select>
+            </div>
+            {llmProvider !== 'manual' && (
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm text-zinc-400">API Key</label>
+                <input 
+                  type="password" 
+                  value={llmApiKey}
+                  onChange={(e) => setLlmApiKey(e.target.value)}
+                  placeholder="Enter API key"
+                  className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg text-sm w-full outline-none"
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -519,6 +570,7 @@ export const MobileBrowser = () => {
 
   // ── Routing ──
   const renderContent = () => {
+    if (view === 'home') return <HomePage />;
     if (view === 'albums') return renderAlbums();
     if (view === 'settings') return renderSettings();
     if (view === 'artists') return renderArtists();

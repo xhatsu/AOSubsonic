@@ -155,3 +155,51 @@ export const useGetPlaylist = (id: string | null) => {
     enabled: !!controller && !!id,
   });
 };
+
+export const useGetFrequentAlbums = (size: number = 20) => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['frequentAlbums', size, controller?.['config']?.serverUrl],
+    queryFn: async () => {
+      if (!controller) throw new Error('Not authenticated');
+      return controller.getAlbumList('frequent', size);
+    },
+    enabled: !!controller,
+  });
+};
+
+export const useGetRecentAlbums = (size: number = 20) => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['recentAlbums', size, controller?.['config']?.serverUrl],
+    queryFn: async () => {
+      if (!controller) throw new Error('Not authenticated');
+      return controller.getAlbumList('recent', size);
+    },
+    enabled: !!controller,
+  });
+};
+
+export const useGetAlbumsByYear = (fromYear: number, toYear: number, size: number = 50) => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['albumsByYear', fromYear, toYear, size, controller?.['config']?.serverUrl],
+    queryFn: async () => {
+      if (!controller) throw new Error('Not authenticated');
+      return controller.getAlbumList2('byYear', size, 0, { fromYear: fromYear.toString(), toYear: toYear.toString() });
+    },
+    enabled: !!controller && !!fromYear && !!toYear,
+  });
+};
+
+export const useGetStarred2 = () => {
+  const controller = useController();
+  return useQuery({
+    queryKey: ['starred2', controller?.['config']?.serverUrl],
+    queryFn: async () => {
+      if (!controller) throw new Error('Not authenticated');
+      return controller.getStarred2();
+    },
+    enabled: !!controller,
+  });
+};

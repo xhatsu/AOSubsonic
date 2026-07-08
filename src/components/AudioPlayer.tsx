@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { usePlayerStore } from '../store/player.store';
+import { useHistoryStore } from '../store/history.store';
 
 export const AudioPlayer = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -83,7 +84,19 @@ export const AudioPlayer = () => {
       <audio
         ref={audioRef}
         src={currentSong.streamUrl}
-        onEnded={() => nextTrack()}
+        onEnded={() => {
+          if (currentSong) {
+            useHistoryStore.getState().recordPlay({
+              id: currentSong.id,
+              title: currentSong.title,
+              artist: currentSong.artist,
+              album: currentSong.album,
+              duration: currentSong.duration,
+              coverArt: currentSong.coverArtUrl
+            });
+          }
+          nextTrack();
+        }}
         onPlay={() => play()}
         onPause={() => pause()}
         id="main-audio-player" 

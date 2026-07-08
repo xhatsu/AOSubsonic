@@ -1,10 +1,11 @@
-import { FiMusic, FiList, FiSearch, FiSettings } from 'react-icons/fi';
+import { FiMusic, FiList, FiSearch, FiSettings, FiHome } from 'react-icons/fi';
 import { useUIStore } from '../store/ui.store';
 
 export const MobileTabBar = () => {
   const { view, setView } = useUIStore();
 
   const tabs = [
+    { id: 'home', icon: FiHome, label: 'Home' },
     { id: 'albums', icon: FiMusic, label: 'Library' },
     { id: 'playlists', icon: FiList, label: 'Playlists' },
     // Reusing standard views for search
@@ -13,6 +14,7 @@ export const MobileTabBar = () => {
   ];
 
   const getActiveState = (tabId: string) => {
+    if (tabId === 'home') return view === 'home';
     if (tabId === 'albums') return view === 'albums' || view === 'artists' || view === 'tracks' || view === 'genres' || view === 'albumDetail' || view === 'artistDetail' || view === 'genreDetail';
     if (tabId === 'playlists') return view === 'playlists' || view === 'playlistDetail';
     if (tabId === 'search') return view === 'search';

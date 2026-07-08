@@ -147,6 +147,14 @@ export class SubsonicController {
     return this.request<any>('search3', { query, artistCount, albumCount, songCount });
   }
 
+  async getStarred2() {
+    return this.request<any>('getStarred2');
+  }
+
+  async getTopSongs(artist: string, count: number = 50) {
+    return this.request<any>('getTopSongs', { artist, count });
+  }
+
   getCoverArtUrl(id: string, size?: number) {
     const authParams = this.getAuthParams();
     const url = new URL(`${this.config.serverUrl}/rest/getCoverArt`);

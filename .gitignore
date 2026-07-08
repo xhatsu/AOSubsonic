@@ -34,3 +34,6 @@ dist-ssr
 # Docker
 Dockerfile
 nginx.conf
+
+# Local scripts
+*.sh

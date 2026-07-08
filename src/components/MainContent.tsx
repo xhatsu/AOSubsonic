@@ -5,12 +5,14 @@ import { useAuthStore } from '../store/auth.store';
 import { SubsonicController } from '../api/subsonic';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiPlay, FiArrowLeft, FiSearch, FiX, FiMusic, FiTrash2, FiPlus, FiList } from 'react-icons/fi';
+import { FiPlay, FiArrowLeft, FiSearch, FiX, FiMusic, FiTrash2, FiPlus, FiList, FiMoreHorizontal } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
 import { WikiImageFallback } from './WikiImageFallback';
-import { FastAverageColor } from 'fast-average-color';
+import { Vibrant } from 'node-vibrant/browser';
 import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
 import { AiPlaylistModal } from './AiPlaylistModal';
+import { HomePage } from './HomePage';
+import { useHistoryStore } from '../store/history.store';
 
 export const MainContent = () => {
   const { 
@@ -21,7 +23,9 @@ export const MainContent = () => {
     selectedArtistId, setSelectedArtistId,
     selectedArtistCover, setSelectedArtistCover,
     selectedPlaylistId, setSelectedPlaylistId,
-    selectedGenre, setSelectedGenre
+    selectedGenre, setSelectedGenre,
+    llmProvider, setLlmProvider,
+    llmApiKey, setLlmApiKey
   } = useUIStore();
 
   const [isAiPlaylistModalOpen, setIsAiPlaylistModalOpen] = useState(false);
@@ -31,11 +35,13 @@ export const MainContent = () => {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [cacheSize, setCacheSize] = useState<number>(0);
+  const [historySize, setHistorySize] = useState<number>(0);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const refreshCacheSize = async () => {
     const size = await getCacheSizeInMB();
     setCacheSize(size);
+    setHistorySize(useHistoryStore.getState().getHistorySizeKB() / 1024);
   };
 
   const handleClearCache = async () => {
@@ -89,32 +95,33 @@ export const MainContent = () => {
   const [lastView, setLastView] = useState<'albums' | 'genres' | 'genreDetail' | 'artists' | 'tracks' | 'playlists'>('albums');
 
   // Context Menu state
-  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; track: any } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; tracks: any[] } | null>(null);
   const [playlistSearchQuery, setPlaylistSearchQuery] = useState('');
 
+  const handleClick = () => {
+    if (contextMenu?.visible) setContextMenu(null);
+  };
+
   useEffect(() => {
-    const handleClick = () => {
-      if (contextMenu?.visible) setContextMenu(null);
-    };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, [contextMenu]);
 
-  const handleContextMenu = (e: React.MouseEvent, track: any) => {
+  const handleContextMenu = (e: React.MouseEvent, item: any | any[]) => {
     e.preventDefault();
     setPlaylistSearchQuery('');
     setContextMenu({
       visible: true,
       x: e.pageX,
       y: e.pageY,
-      track
+      tracks: Array.isArray(item) ? item : [item]
     });
   };
 
-  const handleAddSongToPlaylist = async (playlistId: string, trackId: string) => {
-    if (!ctrl) return;
+  const handleAddTracksToPlaylist = async (playlistId: string, trackIds: string[]) => {
+    if (!ctrl || !trackIds.length) return;
     try {
-      await ctrl.updatePlaylist(playlistId, undefined, undefined, undefined, [trackId]);
+      await ctrl.updatePlaylist(playlistId, undefined, undefined, undefined, trackIds);
       queryClient.invalidateQueries({ queryKey: ['playlist', playlistId] });
       alert('Added to playlist!');
     } catch (e) {
@@ -380,6 +387,21 @@ export const MainContent = () => {
       streamUrl: ctrl.getStreamUrl(song.id),
       coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
     });
+  };
+
+  const handleAddTracksToQueue = (e: React.MouseEvent, tracks: any[]) => {
+    e.stopPropagation();
+    if (!ctrl || !tracks.length) return;
+    const mapped = tracks.map(song => ({
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      duration: song.duration,
+      streamUrl: ctrl.getStreamUrl(song.id),
+      coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
+    }));
+    addListToQueue(mapped);
   };
 
   // Sorted Artists
@@ -823,6 +845,9 @@ export const MainContent = () => {
               }} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-full font-bold transition-colors flex items-center border border-zinc-700/50">
                 <FiPlus className="mr-2 text-zinc-400" /> Add to Queue
               </button>
+              <button onClick={(e) => handleContextMenu(e, songs)} className="bg-zinc-800 hover:bg-zinc-700 text-white p-3 rounded-full font-bold transition-colors flex items-center border border-zinc-700/50" title="More Options">
+                <FiMoreHorizontal className="text-xl text-zinc-400" />
+              </button>
             </div>
           </div>
         </div>
@@ -1084,19 +1109,31 @@ export const MainContent = () => {
       return;
     }
 
-    const fac = new FastAverageColor();
-    fac.getColorAsync(backgroundImageUrl, { algorithm: 'dominant', crossOrigin: 'anonymous' })
-      .then(color => {
-        // color.hex is like '#RRGGBB'
-        setDominantColor(color.hex);
-      })
-      .catch(err => {
-        console.error('Error extracting color:', err);
-        setDominantColor(null);
-      })
-      .finally(() => {
-        fac.destroy();
-      });
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = backgroundImageUrl;
+    
+    img.onload = () => {
+      Vibrant.from(img).getPalette()
+        .then(palette => {
+          if (palette.Vibrant) {
+            setDominantColor(palette.Vibrant.hex);
+          } else if (palette.Muted) {
+            setDominantColor(palette.Muted.hex);
+          } else {
+            setDominantColor(null);
+          }
+        })
+        .catch(err => {
+          console.error('Error extracting color:', err);
+          setDominantColor(null);
+        });
+    };
+    
+    img.onerror = () => {
+      console.error('Error loading image for color extraction');
+      setDominantColor(null);
+    };
   }, [backgroundImageUrl]);
 
   return (
@@ -1158,11 +1195,71 @@ export const MainContent = () => {
               </button>
             </div>
             </div>
+            {/* AI Provider Settings */}
+            <div>
+              <h3 className="text-xl font-bold text-white mb-2">AI Provider Settings</h3>
+              <p className="text-zinc-400 text-sm mb-6">
+                Configure the LLM provider for personalized playlist recommendations.
+              </p>
+              <div className="bg-zinc-900/50 p-6 rounded-xl space-y-4">
+                <div className="flex flex-col space-y-2">
+                  <label className="text-sm text-zinc-400">Provider</label>
+                  <select 
+                    value={llmProvider} 
+                    onChange={(e) => setLlmProvider(e.target.value as any)}
+                    className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-xs"
+                  >
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openai">OpenAI (ChatGPT)</option>
+                    <option value="manual">Manual (Copy & Paste Prompt)</option>
+                  </select>
+                </div>
+                {llmProvider !== 'manual' && (
+                  <div className="flex flex-col space-y-2 pt-2">
+                    <label className="text-sm text-zinc-400">API Key</label>
+                    <input 
+                      type="password" 
+                      value={llmApiKey}
+                      onChange={(e) => setLlmApiKey(e.target.value)}
+                      placeholder={`Enter your ${llmProvider === 'gemini' ? 'Gemini' : 'OpenAI'} API key`}
+                      className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full"
+                    />
+                    <p className="text-xs text-zinc-500">Your key is stored locally and never sent to our servers.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Listening History Settings */}
+            <div>
+              <h3 className="text-xl font-bold text-white mb-2">Listening History</h3>
+              <p className="text-zinc-400 text-sm mb-6">
+                Your play history is tracked locally to power AI recommendations and stats.
+              </p>
+              <div className="flex items-center justify-between bg-zinc-900/50 p-6 rounded-xl">
+                <div>
+                  <span className="text-sm text-zinc-400 block mb-1">Space Used</span>
+                  <span className="text-2xl text-white font-bold">{historySize.toFixed(2)} KB</span>
+                </div>
+                <button
+                  onClick={() => {
+                    if(confirm('Are you sure you want to clear your listening history? This cannot be undone.')) {
+                      useHistoryStore.getState().clearHistory();
+                      setHistorySize(0);
+                    }
+                  }}
+                  className="px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg font-medium transition-colors flex items-center justify-center"
+                >
+                  <FiTrash2 className="mr-2" /> Clear History
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
         <>
-          {view !== 'albumDetail' && (
+          {view === 'home' && <HomePage />}
+          {view !== 'albumDetail' && view !== 'home' && (
             <div className="flex items-center justify-between mb-4 w-full">
               {/* Left Side: Search Bar */}
               <div className="relative z-50 w-64 focus-within:w-80 transition-all" ref={searchContainerRef}>
@@ -1266,7 +1363,7 @@ export const MainContent = () => {
           <button
             className="w-full flex items-center px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors"
             onClick={(e) => {
-              handleAddToQueue(e as any, contextMenu.track);
+              handleAddTracksToQueue(e as any, contextMenu.tracks);
               setContextMenu(null);
             }}
           >
@@ -1301,7 +1398,7 @@ export const MainContent = () => {
                     key={pl.id}
                     className="w-full flex items-center px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700/50 hover:text-white transition-colors truncate"
                     onClick={() => {
-                      handleAddSongToPlaylist(pl.id, contextMenu.track.id);
+                      handleAddTracksToPlaylist(pl.id, contextMenu.tracks.map(t => t.id));
                       setContextMenu(null);
                     }}
                   >

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiFileText, FiMaximize2, FiList, FiShuffle } from 'react-icons/fi';
+import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiMic, FiMaximize2, FiList, FiShuffle } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
 
 export const TrackProgressBar = ({ duration: propDuration }: { duration: number }) => {
@@ -150,7 +150,7 @@ export const PlayerBar = () => {
           className={`transition-colors ${showLyrics ? 'text-primary' : 'text-zinc-400 hover:text-white'}`}
           title="Toggle Lyrics"
         >
-          <FiFileText className="text-xl" />
+          <FiMic className="text-xl" />
         </button>
 
         <div className="flex items-center space-x-3">
