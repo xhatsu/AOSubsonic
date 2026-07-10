@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { FiLock } from 'react-icons/fi';
+import { FiLock, FiLoader } from 'react-icons/fi';
+import { downloaderApi } from '../api/downloader';
 
 interface DownloaderAuthProps {
   onSuccess: () => void;
@@ -8,15 +9,23 @@ interface DownloaderAuthProps {
 export const DownloaderAuth: React.FC<DownloaderAuthProps> = ({ onSuccess }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const expectedPassword = (window as any).__RUNTIME_ENV__?.VITE_DOWNLOADER_PASSWORD || import.meta.env.VITE_DOWNLOADER_PASSWORD || 'admin';
-    if (password === expectedPassword) {
+    if (!password) return;
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      await downloaderApi.login(password);
       onSuccess();
-    } else {
-      setError('Incorrect password');
+    } catch (err: any) {
+      setError(err.message || 'Incorrect password');
       setPassword('');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -47,9 +56,10 @@ export const DownloaderAuth: React.FC<DownloaderAuthProps> = ({ onSuccess }) => 
           </div>
           <button
             type="submit"
-            className="w-full bg-primary hover:bg-purple-600 text-white font-bold py-3 rounded-lg transition-colors active:scale-[0.98]"
+            disabled={isLoading || !password}
+            className="w-full bg-primary hover:bg-purple-600 disabled:bg-primary/50 text-white font-bold py-3 rounded-lg transition-colors active:scale-[0.98] flex justify-center items-center"
           >
-            Unlock Downloader
+            {isLoading ? <FiLoader className="animate-spin text-xl" /> : 'Unlock Downloader'}
           </button>
         </form>
       </div>

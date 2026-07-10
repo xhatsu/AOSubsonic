@@ -16,6 +16,38 @@ export interface HTTPValidationError {
 
 export class DownloaderAPI {
   private baseUrl: string;
+  private token: string | null = null;
+
+  setToken(token: string) {
+    this.token = token;
+  }
+
+  getToken() {
+    return this.token;
+  }
+
+  async login(password: string): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ password })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Login failed');
+    }
+    
+    this.token = data.token;
+    return data.token;
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    return this.token ? { 'Authorization': `Bearer ${this.token}` } : {};
+  }
 
   constructor() {
     // Relying on the server-side proxy
@@ -43,6 +75,7 @@ export class DownloaderAPI {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...this.getAuthHeaders()
         },
         body: JSON.stringify({ url } as DownloadRequest),
       });
@@ -61,7 +94,9 @@ export class DownloaderAPI {
   async getStatus(jobId: string): Promise<any> {
     if (!this.baseUrl) throw new Error("Downloader API URL is not configured.");
 
-    const response = await fetch(`${this.baseUrl}/status/${jobId}`);
+    const response = await fetch(`${this.baseUrl}/status/${jobId}`, {
+      headers: this.getAuthHeaders()
+    });
     if (!response.ok) {
       throw new Error(`Failed to get status for job ${jobId}`);
     }
@@ -71,7 +106,9 @@ export class DownloaderAPI {
   async getQueue(): Promise<any> {
     if (!this.baseUrl) throw new Error("Downloader API URL is not configured.");
 
-    const response = await fetch(`${this.baseUrl}/queue?detailed=true&limit=100`);
+    const response = await fetch(`${this.baseUrl}/queue?detailed=true&limit=100`, {
+      headers: this.getAuthHeaders()
+    });
     if (!response.ok) {
       throw new Error("Failed to fetch queue");
     }
@@ -81,7 +118,9 @@ export class DownloaderAPI {
   async getRecentSuccesses(): Promise<any> {
     if (!this.baseUrl) throw new Error("Downloader API URL is not configured.");
 
-    const response = await fetch(`${this.baseUrl}/recent-successes`);
+    const response = await fetch(`${this.baseUrl}/recent-successes`, {
+      headers: this.getAuthHeaders()
+    });
     if (!response.ok) {
       throw new Error("Failed to fetch recent successes");
     }
@@ -93,6 +132,7 @@ export class DownloaderAPI {
 
     const response = await fetch(`${this.baseUrl}/resume`, {
       method: 'POST',
+      headers: this.getAuthHeaders()
     });
     
     if (!response.ok) {

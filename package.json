@@ -19,6 +19,7 @@
     "express": "^5.2.1",
     "http-proxy-middleware": "^3.0.7",
     "idb-keyval": "^6.2.5",
+    "jsonwebtoken": "^9.0.3",
     "md5": "^2.3.0",
     "mobile-drag-drop": "^3.0.0-rc.0",
     "node-vibrant": "^4.0.4",
