@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type ViewState = 'home' | 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail' | 'playlists' | 'playlistDetail' | 'search';
+type ViewState = 'home' | 'artists' | 'albums' | 'tracks' | 'albumDetail' | 'settings' | 'artistDetail' | 'genres' | 'genreDetail' | 'playlists' | 'playlistDetail' | 'search' | 'downloader';
 export type LyricsStyle = 'dynamic' | 'clean';
 
 interface UIState {

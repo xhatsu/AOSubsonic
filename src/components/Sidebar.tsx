@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/auth.store';
 import { useUIStore } from '../store/ui.store';
-import { FiMusic, FiList, FiSettings, FiLogOut, FiChevronDown, FiChevronRight, FiUser, FiDisc, FiRadio, FiGrid, FiHome } from 'react-icons/fi';
+import { FiMusic, FiList, FiSettings, FiLogOut, FiChevronDown, FiChevronRight, FiUser, FiDisc, FiRadio, FiGrid, FiHome, FiDownload } from 'react-icons/fi';
 
 
 export const Sidebar = () => {
@@ -72,6 +72,13 @@ export const Sidebar = () => {
           >
             <FiList className="text-lg" />
             <span className="font-medium">Playlists</span>
+          </button>
+          <button 
+            onClick={() => setView('downloader')}
+            className={`flex items-center space-x-3 px-3 py-2 w-full rounded-lg transition-colors text-left ${view === 'downloader' ? 'bg-primary/20 text-white font-medium' : 'hover:bg-zinc-900 hover:text-white'}`}
+          >
+            <FiDownload className="text-lg" />
+            <span className="font-medium">Downloader</span>
           </button>
           <button 
             onClick={() => setView('settings')}

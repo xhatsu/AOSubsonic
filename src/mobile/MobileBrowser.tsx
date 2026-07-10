@@ -9,6 +9,7 @@ import { FiMusic, FiUser, FiPlay, FiList, FiArrowLeft, FiSearch, FiX } from 'rea
 import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
 import { HomePage } from '../components/HomePage';
 import { useHistoryStore } from '../store/history.store';
+import { DownloaderView } from '../components/DownloaderView';
 
 export const MobileBrowser = () => {
   const { view, setView, selectedPlaylistId, setSelectedPlaylistId, selectedAlbumId, setSelectedAlbumId, setSelectedAlbumCover, lyricsStyle, setLyricsStyle, showFps, toggleFps, llmProvider, setLlmProvider, llmApiKey, setLlmApiKey } = useUIStore();
@@ -579,6 +580,7 @@ export const MobileBrowser = () => {
     if (view === 'playlistDetail') return renderPlaylistDetail();
     if (view === 'albumDetail') return renderAlbumDetail();
     if (view === 'search') return renderSearch();
+    if (view === 'downloader') return <DownloaderView />;
 
     return (
       <div className="flex flex-col items-center justify-center h-full text-zinc-500 p-8 text-center">

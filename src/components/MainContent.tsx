@@ -13,6 +13,7 @@ import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
 import { AiPlaylistModal } from './AiPlaylistModal';
 import { HomePage } from './HomePage';
 import { useHistoryStore } from '../store/history.store';
+import { DownloaderView } from './DownloaderView';
 
 export const MainContent = () => {
   const { 
@@ -1347,6 +1348,7 @@ export const MainContent = () => {
           {view === 'genreDetail' && renderGenreDetail()}
           {view === 'playlists' && renderPlaylists()}
           {view === 'playlistDetail' && renderPlaylistDetail()}
+          {view === 'downloader' && <DownloaderView />}
         </>
       )}
       </div>
