@@ -50,8 +50,8 @@ export async function fetchLyrics(song: QueueSong, onFetchingUrl?: (url: string)
         const localApiUrl = `/api/lyrics?${params.toString()}`;
         console.log("Attempting to fetch local API via Node Proxy:", localApiUrl);
         if (onFetchingUrl) onFetchingUrl(localApiUrl);
-        // Increase timeout to 20 seconds since background scraping can take time
-        const cacheRes = await fetchWithTimeout(localApiUrl, 20000);
+        // Increase timeout to 45 seconds since background scraping can take a long time
+        const cacheRes = await fetchWithTimeout(localApiUrl, 45000);
         if (cacheRes.ok) {
           const cacheData = await cacheRes.json();
           if (cacheData && cacheData.results && cacheData.results.length > 0) {

@@ -27,7 +27,8 @@ export const MainContent = () => {
     selectedPlaylistId, setSelectedPlaylistId,
     selectedGenre, setSelectedGenre,
     llmProvider, setLlmProvider,
-    llmApiKey, setLlmApiKey
+    llmApiKey, setLlmApiKey,
+    llmModelName, setLlmModelName
   } = useUIStore();
 
   const [isAiPlaylistModalOpen, setIsAiPlaylistModalOpen] = useState(false);
@@ -1206,23 +1207,34 @@ export const MainContent = () => {
                     onChange={(e) => setLlmProvider(e.target.value as any)}
                     className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-xs"
                   >
-                    <option value="gemini">Google Gemini</option>
-                    <option value="openai">OpenAI (ChatGPT)</option>
+                    <option value="openrouter">OpenRouter</option>
                     <option value="manual">Manual (Copy & Paste Prompt)</option>
                   </select>
                 </div>
                 {llmProvider !== 'manual' && (
-                  <div className="flex flex-col space-y-2 pt-2">
-                    <label className="text-sm text-zinc-400">API Key</label>
-                    <input 
-                      type="password" 
-                      value={llmApiKey}
-                      onChange={(e) => setLlmApiKey(e.target.value)}
-                      placeholder={`Enter your ${llmProvider === 'gemini' ? 'Gemini' : 'OpenAI'} API key`}
-                      className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full"
-                    />
-                    <p className="text-xs text-zinc-500">Your key is stored locally and never sent to our servers.</p>
-                  </div>
+                  <>
+                    <div className="flex flex-col space-y-2 pt-2">
+                      <label className="text-sm text-zinc-400">OpenRouter API Key</label>
+                      <input 
+                        type="password" 
+                        value={llmApiKey}
+                        onChange={(e) => setLlmApiKey(e.target.value)}
+                        placeholder="Enter your OpenRouter API key"
+                        className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full"
+                      />
+                      <p className="text-xs text-zinc-500">Your key is stored locally and never sent to our servers.</p>
+                    </div>
+                    <div className="flex flex-col space-y-2 pt-2">
+                      <label className="text-sm text-zinc-400">Model Name</label>
+                      <input 
+                        type="text" 
+                        value={llmModelName}
+                        onChange={(e) => setLlmModelName(e.target.value)}
+                        placeholder="e.g. openai/gpt-4o, google/gemini-pro"
+                        className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-md"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -1255,8 +1267,7 @@ export const MainContent = () => {
         </div>
       ) : (
         <>
-          {view === 'home' && <HomePage />}
-          {view !== 'albumDetail' && view !== 'home' && (
+          {view !== 'albumDetail' && (
             <div className="flex items-center justify-between mb-4 w-full">
               {/* Left Side: Search Bar */}
               <div className="relative z-50 w-64 focus-within:w-80 transition-all" ref={searchContainerRef}>
@@ -1335,6 +1346,7 @@ export const MainContent = () => {
             </div>
           )}
 
+          {view === 'home' && <HomePage />}
           {view === 'artists' && renderArtists()}
           {view === 'albums' && renderAlbums()}
           {view === 'tracks' && renderTracks()}

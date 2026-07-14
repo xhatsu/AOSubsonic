@@ -171,16 +171,22 @@ class CompanionService {
     this.lastServerPos = 0;
     this.lastServerTime = performance.now();
     this.lastDuration = 0;
+    this.playing = true;
+    this.stateChangeCbs.forEach(cb => cb('playing'));
     this.send({ type: 'play', url: streamUrl });
   }
 
   pause(): void { 
     this.lastCommandTime = performance.now();
+    this.playing = false;
+    this.stateChangeCbs.forEach(cb => cb('paused'));
     this.send({ type: 'pause' }); 
   }
   
   resume(): void { 
     this.lastCommandTime = performance.now();
+    this.playing = true;
+    this.stateChangeCbs.forEach(cb => cb('playing'));
     this.send({ type: 'resume' }); 
   }
 

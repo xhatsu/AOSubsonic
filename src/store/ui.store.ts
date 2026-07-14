@@ -34,10 +34,12 @@ interface UIState {
   selectedGenre: string;
   setSelectedGenre: (genre: string) => void;
 
-  llmProvider: 'gemini' | 'openai' | 'manual';
-  setLlmProvider: (provider: 'gemini' | 'openai' | 'manual') => void;
+  llmProvider: 'openrouter' | 'manual';
+  setLlmProvider: (provider: 'openrouter' | 'manual') => void;
   llmApiKey: string;
   setLlmApiKey: (key: string) => void;
+  llmModelName: string;
+  setLlmModelName: (modelName: string) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -72,10 +74,12 @@ export const useUIStore = create<UIState>()(
       selectedGenre: '',
       setSelectedGenre: (genre) => set({ selectedGenre: genre }),
 
-      llmProvider: 'gemini',
+      llmProvider: 'openrouter',
       setLlmProvider: (provider) => set({ llmProvider: provider }),
       llmApiKey: '',
       setLlmApiKey: (key) => set({ llmApiKey: key }),
+      llmModelName: 'openai/gpt-4o',
+      setLlmModelName: (modelName) => set({ llmModelName: modelName }),
     }),
     {
       name: 'ui-storage',

@@ -20,15 +20,19 @@ export interface LLMMoods {
 export interface LLMResponse {
   playlists: LLMPlaylist[];
   moods: LLMMoods;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+  };
 }
 
 export class LLMService {
-  
+
   static async generatePromptContext(ctrl: SubsonicController): Promise<string> {
     const history = useHistoryStore.getState();
     const topSongs = history.getTopSongs(30);
     const topArtists = history.getTopArtists(15);
-    
+
     let context = `## Listener Profile\n\n`;
     context += `### Listening Stats\n`;
     context += `- Total listening time: ${Math.floor(history.totalListeningSeconds / 3600)} hours\n`;
@@ -41,14 +45,7 @@ export class LLMService {
     context += `\n`;
 
     context += `### Top Most-Played Songs\n`;
-    context += `| Rank | Title | Artist | Album | Plays |\n`;
-    context += `|---|---|---|---|---|\n`;
-    topSongs.forEach((s, i) => {
-      const title = (s.title || '').replace(/\|/g, '');
-      const artist = (s.artist || '').replace(/\|/g, '');
-      const album = (s.album || '').replace(/\|/g, '');
-      context += `| ${i + 1} | ${title} | ${artist} | ${album} | ${s.count} |\n`;
-    });
+    context += this.buildHistoryContext(topSongs);
     context += `\n`;
 
     const allSongs = new Map();
@@ -99,20 +96,35 @@ export class LLMService {
     }
 
     context += `## Full Library (${allSongs.size} songs provided for context)\n`;
-    context += `| ID | Title | Artist | Album | Genre | Year | Duration |\n`;
-    context += `|---|---|---|---|---|---|---|\n`;
-    
-    Array.from(allSongs.values()).forEach((s: any) => {
-      const min = Math.floor(s.duration / 60);
-      const sec = (s.duration % 60).toString().padStart(2, '0');
-      const duration = `${min}:${sec}`;
-      const title = (s.title || '').replace(/\|/g, '');
-      const artist = (s.artist || '').replace(/\|/g, '');
-      const album = (s.album || '').replace(/\|/g, '');
-      const genre = (s.genre || '').replace(/\|/g, '');
+    context += this.buildLibraryContext(Array.from(allSongs.values()));
+
+    return context;
+  }
+
+  private static buildHistoryContext(history: any[]): string {
+    let context = "id,title,artist,count\n";
+
+    history.forEach(s => {
+      const title = `"${(s.title || '').replace(/"/g, '""')}"`;
+      const artist = `"${(s.artist || '').replace(/"/g, '""')}"`;
+      context += `${s.id},${title},${artist},${s.count}\n`;
+    });
+
+    return context;
+  }
+
+  private static buildLibraryContext(library: any[]): string {
+    let context = "id,title,artist,album,genre,year\n";
+
+    library.forEach(s => {
+      // Escape commas by wrapping in quotes
+      const title = `"${(s.title || '').replace(/"/g, '""')}"`;
+      const artist = `"${(s.artist || '').replace(/"/g, '""')}"`;
+      const album = `"${(s.album || '').replace(/"/g, '""')}"`;
+      const genre = `"${(s.genre || '').replace(/"/g, '""')}"`;
       const year = s.year || '';
-      
-      context += `| ${s.id} | ${title} | ${artist} | ${album} | ${genre} | ${year} | ${duration} |\n`;
+
+      context += `${s.id},${title},${artist},${album},${genre},${year}\n`;
     });
 
     return context;
@@ -126,27 +138,23 @@ export class LLMService {
 Using ONLY songs from the library below, create personalized playlist recommendations for this listener. You must return:
 
 1. **5-8 Themed Playlists** — Each playlist should be 15-30 songs.
-   Think of these like Spotify's "Made For You" playlists.
+   Think of these like Spotify's "Made For You" playlists. The focus should be on creating a flowing musical journey rather than just clumping similar-sounding songs or artists together. 
    Each needs:
-   - A creative, evocative name (not generic like "Chill Vibes")
-   - A one-sentence description explaining the mood/vibe/purpose
-   - A list of song IDs from the library
-   - The reasoning: why this playlist fits this specific listener
+   - A **simple, familiar name**. Avoid edgy, overly clever, or complex titles. Use everyday phrases that clearly set the vibe (e.g., "Refresh Day", "Time for Study", "Feeling Blue", "Up a Beat").
+   - A one-sentence description explaining the mood/vibe/purpose.
+   - A list of song IDs from the library.
+   - The reasoning: why this playlist fits this specific listener.
 
-2. **5 Mood Playlists** — Each mood playlist should be 10-20 songs.
-   Required moods:
-   - chill (relaxing, downtempo, peaceful)
-   - energetic (upbeat, driving, high-energy)
-   - melancholy (sad, reflective, emotional)
-   - focus (ambient, instrumental-leaning, non-distracting)
-   - party (danceable, fun, crowd-pleasing)
+2. **5 Mood Playlists** — Each mood playlist MUST be exactly 20 songs.
+   Infer 5 unique moods based on the context of the listener's music taste (e.g., if they listen to metal, a mood might be 'aggressive', if jazz, it might be 'smooth').
+   - Return 5 unique mood keys in the JSON matching the inferred moods.
 
 ## Playlist Curation Rules
 
-- **Flow matters**: Order songs so the playlist has a natural arc.
-- **Avoid repetition**: Don't put multiple songs from the same album back-to-back.
+- **Flow over clumping**: Order songs so the playlist has a natural, seamless sonic arc. Pay attention to transitions in tempo and energy rather than grouping exact sub-genres or styles together in chunks.
+- **Avoid repetition**: Don't put multiple songs from the same album or artist back-to-back.
 - **Deep cuts over hits**: Prefer less-played songs from artists the user already loves.
-- **Cross-pollinate**: Include songs from artists the user plays less frequently but that fit the mood.
+- **Cross-pollinate**: Include songs from artists the user plays less frequently but that bridge the gap between tracks and fit the mood.
 - **Personalization > popularity**: Base decisions on THIS user's actual listening patterns.
 
 ## Output Format
@@ -187,42 +195,9 @@ Return ONLY valid JSON, no markdown formatting (\`\`\`json etc), no explanations
 }`;
   }
 
-  static async fetchGemini(apiKey: string, prompt: string): Promise<LLMResponse> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${apiKey}`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-        }
-      })
-    });
+  static async fetchOpenRouter(apiKey: string, model: string, prompt: string): Promise<LLMResponse> {
+    const url = 'https://openrouter.ai/api/v1/chat/completions';
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch from Gemini API');
-    }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!text) throw new Error('Invalid response from Gemini');
-    
-    return JSON.parse(text) as LLMResponse;
-  }
-
-  static async fetchOpenAI(apiKey: string, prompt: string): Promise<LLMResponse> {
-    const url = 'https://api.openai.com/v1/chat/completions';
-    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -230,8 +205,9 @@ Return ONLY valid JSON, no markdown formatting (\`\`\`json etc), no explanations
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: model || "openai/gpt-4o",
         response_format: { type: "json_object" },
+        max_tokens: 4096,
         messages: [
           {
             role: "user",
@@ -242,14 +218,21 @@ Return ONLY valid JSON, no markdown formatting (\`\`\`json etc), no explanations
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch from OpenAI API');
+      throw new Error('Failed to fetch from OpenRouter API');
     }
 
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
-    
-    if (!text) throw new Error('Invalid response from OpenAI');
-    
-    return JSON.parse(text) as LLMResponse;
+
+    if (!text) throw new Error('Invalid response from OpenRouter');
+
+    const parsed = JSON.parse(text) as LLMResponse;
+    if (data.usage) {
+      parsed.usage = {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: data.usage.completion_tokens
+      };
+    }
+    return parsed;
   }
 }

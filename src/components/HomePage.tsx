@@ -42,7 +42,7 @@ const ScrollRow = ({ title, children, onRefresh }: { title: string, children: Re
 export const HomePage = () => {
   const config = useAuthStore(state => state.config);
   const ctrl = useMemo(() => config ? new SubsonicController(config) : null, [config]);
-  const { setView, setSelectedAlbumId, setSelectedAlbumCover, llmProvider, llmApiKey } = useUIStore();
+  const { setView, setSelectedAlbumId, setSelectedAlbumCover, llmProvider, llmApiKey, llmModelName } = useUIStore();
   const history = useHistoryStore();
   const { setQueue, play } = usePlayerStore();
   
@@ -167,11 +167,7 @@ export const HomePage = () => {
       const fullPrompt = prompt + "\\n\\n" + LLMService.getSystemPrompt();
       let response: LLMResponse;
       
-      if (llmProvider === 'gemini') {
-        response = await LLMService.fetchGemini(llmApiKey, fullPrompt);
-      } else {
-        response = await LLMService.fetchOpenAI(llmApiKey, fullPrompt);
-      }
+      response = await LLMService.fetchOpenRouter(llmApiKey, llmModelName, fullPrompt);
       
       setLlmResponse(response);
       localStorage.setItem('aosubsonic-llm-cache', JSON.stringify(response));
@@ -285,9 +281,16 @@ export const HomePage = () => {
         <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -mr-48 -mt-48 pointer-events-none"></div>
         
         <div className="flex items-center justify-between mb-6 relative z-10">
-          <h2 className="text-3xl font-bold text-white tracking-tight">
-            For You
-          </h2>
+          <div className="flex items-center space-x-4">
+            <h2 className="text-3xl font-bold text-white tracking-tight">
+              For You
+            </h2>
+            {llmResponse?.usage && (
+              <span className="text-xs font-mono text-zinc-500 bg-zinc-800/50 px-2 py-1 rounded border border-zinc-700/50">
+                In: {llmResponse.usage.promptTokens} | Out: {llmResponse.usage.completionTokens}
+              </span>
+            )}
+          </div>
           <button onClick={handleGenerateLLM} disabled={isGenerating} className="text-sm bg-primary/20 text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-full font-bold transition-colors">
             {isGenerating ? 'Generating...' : llmResponse ? 'Refresh AI' : 'Generate with AI'}
           </button>
