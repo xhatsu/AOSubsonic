@@ -3,6 +3,7 @@ import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
 import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiMic, FiMaximize2, FiList, FiShuffle } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
+import { companionService } from '../services/CompanionService';
 
 export const TrackProgressBar = ({ duration: propDuration }: { duration: number }) => {
   const [audioDuration, setAudioDuration] = useState(0);
@@ -11,25 +12,41 @@ export const TrackProgressBar = ({ duration: propDuration }: { duration: number 
   const inputRef = useRef<HTMLInputElement>(null);
   const timeDisplayRef = useRef<HTMLSpanElement>(null);
 
-  // Reset audio duration when a new song starts
+  const playbackMode = usePlayerStore(state => state.playbackMode);
+
+  // Reset audio duration when a new song starts or mode changes
   useEffect(() => {
     setAudioDuration(0);
-  }, [propDuration]);
+  }, [propDuration, playbackMode]);
 
   useEffect(() => {
     audioRef.current = document.getElementById('main-audio-player') as HTMLAudioElement;
 
     let animationFrameId: number;
     const updateTime = () => {
-      if (audioRef.current) {
+      const mode = usePlayerStore.getState().playbackMode;
+      if (mode === 'companion') {
         if (!isDragging && inputRef.current && timeDisplayRef.current) {
-          const currentT = audioRef.current.currentTime;
+          const currentT = companionService.getRawPosition();
           inputRef.current.value = currentT.toString();
           timeDisplayRef.current.innerText = formatTime(currentT);
         }
-        const realDuration = audioRef.current.duration;
-        if (realDuration && !isNaN(realDuration) && realDuration !== Infinity) {
-          setAudioDuration(realDuration);
+        const dur = companionService.getDuration();
+        if (dur > 0) setAudioDuration(dur);
+      } else {
+        if (!audioRef.current || !document.body.contains(audioRef.current)) {
+          audioRef.current = document.getElementById('main-audio-player') as HTMLAudioElement;
+        }
+        if (audioRef.current) {
+          if (!isDragging && inputRef.current && timeDisplayRef.current) {
+            const currentT = audioRef.current.currentTime;
+            inputRef.current.value = currentT.toString();
+            timeDisplayRef.current.innerText = formatTime(currentT);
+          }
+          const realDuration = audioRef.current.duration;
+          if (realDuration && !isNaN(realDuration) && realDuration !== Infinity) {
+            setAudioDuration(realDuration);
+          }
         }
       }
       animationFrameId = requestAnimationFrame(updateTime);
@@ -47,9 +64,19 @@ export const TrackProgressBar = ({ duration: propDuration }: { duration: number 
 
   const handleSeekEnd = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
     setIsDragging(false);
-    if (audioRef.current) {
-      const targetTime = parseFloat((e.target as HTMLInputElement).value);
-      audioRef.current.currentTime = targetTime;
+    const targetTime = parseFloat((e.target as HTMLInputElement).value);
+    const mode = usePlayerStore.getState().playbackMode;
+    if (mode === 'companion') {
+      companionService.seek(targetTime);
+    } else {
+      let audio = audioRef.current;
+      if (!audio || !document.body.contains(audio)) {
+        audio = document.getElementById('main-audio-player') as HTMLAudioElement;
+        audioRef.current = audio;
+      }
+      if (audio) {
+        audio.currentTime = targetTime;
+      }
     }
   };
 
@@ -165,6 +192,12 @@ export const PlayerBar = () => {
             className="w-24 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-primary"
           />
         </div>
+
+        {usePlayerStore.getState().playbackMode === 'companion' && (
+          <div className="flex items-center ml-3" title={usePlayerStore.getState().companionConnected ? 'WASAPI: Connected' : 'WASAPI: Disconnected'}>
+            <div className={`w-2 h-2 rounded-full transition-colors ${usePlayerStore.getState().companionConnected ? 'bg-green-400' : 'bg-red-400 animate-pulse'}`} />
+          </div>
+        )}
       </div>
     </div>
   );

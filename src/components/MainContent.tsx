@@ -14,6 +14,7 @@ import { AiPlaylistModal } from './AiPlaylistModal';
 import { HomePage } from './HomePage';
 import { useHistoryStore } from '../store/history.store';
 import { DownloaderView } from './DownloaderView';
+import { PlaybackSettings } from './PlaybackSettings';
 
 export const MainContent = () => {
   const { 
@@ -1139,15 +1140,6 @@ export const MainContent = () => {
 
   return (
     <div className="flex-1 overflow-y-auto bg-zinc-900 flex flex-col relative">
-      {/* Premium Header Gradient */}
-      {dominantColor && (
-        <div 
-          className="absolute top-0 left-0 right-0 h-[500px] pointer-events-none transition-colors duration-700 ease-in-out"
-          style={{
-            background: `linear-gradient(to bottom, ${dominantColor}40 0%, ${dominantColor}10 40%, transparent 100%)`
-          }}
-        />
-      )}
 
       {/* Content wrapper */}
       <div className="relative z-10 flex flex-col flex-1 p-8">
@@ -1155,7 +1147,11 @@ export const MainContent = () => {
         <div className="flex-1">
           <h2 className="text-3xl font-bold text-white mb-8">Settings</h2>
           <div className="max-w-2xl bg-zinc-800/50 rounded-2xl p-8 border border-zinc-700 space-y-10">
-            
+            {/* Playback Settings */}
+            <div className="bg-zinc-900/30 p-6 rounded-xl border border-zinc-800/50">
+              <PlaybackSettings />
+            </div>
+
             {/* Theme Settings */}
             <div>
               <h3 className="text-xl font-bold text-white mb-2">Theme Color</h3>

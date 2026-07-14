@@ -30,6 +30,7 @@ interface PlayerState {
   removeFromQueue: (index: number) => void;
   moveInQueue: (fromIndex: number, toIndex: number) => void;
   clearQueue: () => void;
+  resetCurrentSong: () => void;
   playFromQueue: (index: number) => void;
   toggleQueue: () => void;
   play: () => void;
@@ -39,6 +40,17 @@ interface PlayerState {
   prevTrack: () => void;
   shuffleQueue: () => void;
   setVolume: (vol: number) => void;
+  playbackMode: 'browser' | 'companion';
+  companionConnected: boolean;
+  companionInfo: { version: string; mpvVersion: string; wasapiExclusive?: boolean; wasapiDevice?: string } | null;
+  companionConfig: { wasapiExclusive: boolean; wasapiDevice: string };
+  lyricsOffsetMs: number;
+
+  setPlaybackMode: (mode: 'browser' | 'companion') => void;
+  setCompanionConnected: (connected: boolean, info?: { version: string; mpvVersion: string; wasapiExclusive?: boolean; wasapiDevice?: string }) => void;
+  setCompanionConfig: (config: { wasapiExclusive: boolean; wasapiDevice: string }) => void;
+  setLyricsOffsetMs: (ms: number) => void;
+  setShowQueue: (show: boolean) => void;
 }
 
 export const usePlayerStore = create<PlayerState>((set) => ({
@@ -47,6 +59,30 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   isPlaying: false,
   volume: getInitialVolume(),
   showQueue: false,
+  playbackMode: (typeof window !== 'undefined' && localStorage.getItem('playback_mode') as 'browser' | 'companion') || 'browser',
+  companionConnected: false,
+  companionInfo: null,
+  companionConfig: typeof window !== 'undefined' && localStorage.getItem('companion_config') ? JSON.parse(localStorage.getItem('companion_config')!) : { wasapiExclusive: true, wasapiDevice: '' },
+  lyricsOffsetMs: typeof window !== 'undefined' ? parseInt(localStorage.getItem('companion_lyrics_offset_ms') || '0', 10) : 0,
+
+  setPlaybackMode: (mode) => {
+    localStorage.setItem('playback_mode', mode);
+    set({ playbackMode: mode });
+  },
+  setCompanionConnected: (connected, info) => set({
+    companionConnected: connected,
+    companionInfo: info || null,
+  }),
+  setCompanionConfig: (config) => {
+    localStorage.setItem('companion_config', JSON.stringify(config));
+    set({ companionConfig: config });
+  },
+  setLyricsOffsetMs: (ms) => {
+    const clamped = Math.max(-5000, Math.min(5000, ms));
+    localStorage.setItem('companion_lyrics_offset_ms', String(clamped));
+    set({ lyricsOffsetMs: clamped });
+  },
+  setShowQueue: (show) => set({ showQueue: show }),
 
   setQueue: (songs, startIndex = 0) => set({ queue: songs, currentIndex: startIndex }),
   addToQueue: (song) => set((state) => ({ queue: [...state.queue, song] })),
@@ -83,7 +119,8 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     
     return { queue: newQueue, currentIndex: newIndex };
   }),
-  clearQueue: () => set({ queue: [], currentIndex: 0, isPlaying: false }),
+  clearQueue: () => set({ queue: [], currentIndex: -1, isPlaying: false }),
+  resetCurrentSong: () => set({ currentIndex: -1, isPlaying: false }),
   playFromQueue: (index) => set({ currentIndex: index, isPlaying: true }),
   toggleQueue: () => set((state) => ({ showQueue: !state.showQueue })),
   play: () => set({ isPlaying: true }),

@@ -32,9 +32,58 @@ export async function fetchLyrics(song: QueueSong, onFetchingUrl?: (url: string)
       artist: song.artist,
     });
     
+    // Add album if available
+    if (song.album) {
+      params.append('album', song.album);
+    }
+    
     // Add duration in SECONDS if available
     if (song.duration && song.duration > 0) {
       params.append('duration', Math.round(song.duration).toString());
+    }
+
+    // 0. Try Local Downloader API first
+    try {
+      // @ts-ignore - Read from k8s runtime env injected by server.cjs, fallback to Vite build env
+      const localApiBase = (window.__RUNTIME_ENV__ && window.__RUNTIME_ENV__.VITE_DOWNLOADER_API_URL) || import.meta.env.VITE_DOWNLOADER_API_URL;
+      if (localApiBase) {
+        const localApiUrl = `/api/lyrics?${params.toString()}`;
+        console.log("Attempting to fetch local API via Node Proxy:", localApiUrl);
+        if (onFetchingUrl) onFetchingUrl(localApiUrl);
+        // Increase timeout to 20 seconds since background scraping can take time
+        const cacheRes = await fetchWithTimeout(localApiUrl, 20000);
+        if (cacheRes.ok) {
+          const cacheData = await cacheRes.json();
+          if (cacheData && cacheData.results && cacheData.results.length > 0) {
+            const result = cacheData.results[0];
+            if (result.lyricsUrl) {
+              if (onFetchingUrl) onFetchingUrl(result.lyricsUrl);
+              const ttmlRes = await fetchWithTimeout(result.lyricsUrl);
+              if (ttmlRes.ok) {
+                const ttmlText = await ttmlRes.text();
+                const parsedTTML = parseAppleTTML(ttmlText);
+                if (parsedTTML && parsedTTML.lyrics && parsedTTML.lyrics.length > 0) {
+                  return {
+                    ...parsedTTML,
+                    data: parsedTTML.lyrics,
+                    metadata: {
+                      ...parsedTTML.metadata,
+                      source: cacheData.source === "LOCAL" ? "Local API" : "Local API (US)"
+                    }
+                  };
+                }
+              }
+            }
+          }
+        } else {
+          console.error("Local API returned status:", cacheRes.status);
+        }
+      } else {
+        console.warn("VITE_DOWNLOADER_API_URL is not defined in env");
+      }
+    } catch (e) {
+      console.error("Local Downloader API failed with error:", e);
+      console.warn("Local Downloader API failed, falling back to BiniLyrics");
     }
 
     // 1. Try BiniLyrics Cache API first for ultra-fast TTML loading

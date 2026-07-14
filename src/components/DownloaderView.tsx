@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGetDownloaderQueue, useGetRecentSuccesses, useGetDownloaderStatus, useDownloadMutation, useResumeWorkerMutation } from '../api/downloaderHooks';
 import { DownloaderAuth } from './DownloaderAuth';
+import { downloaderApi } from '../api/downloader';
 import { FiDownload, FiPlay, FiRefreshCw, FiAlertCircle, FiCheckCircle, FiClock, FiActivity } from 'react-icons/fi';
 
 const LiveJobItem = ({ initialJob, explicitJobId, defaultStatus, renderItem }: { initialJob?: any, explicitJobId?: string, defaultStatus: string, renderItem: (item: any, i: number, defaultStatus: string) => React.ReactNode }) => {
@@ -17,7 +18,7 @@ const LiveJobItem = ({ initialJob, explicitJobId, defaultStatus, renderItem }: {
 };
 
 export const DownloaderView = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(!!downloaderApi.getToken());
   const [url, setUrl] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -27,6 +28,17 @@ export const DownloaderView = () => {
   const { data: recentData, isLoading: isLoadingRecent, isFetching: isFetchingRecent, refetch: refetchRecent } = useGetRecentSuccesses(isAuthenticated);
   const downloadMutation = useDownloadMutation();
   const resumeMutation = useResumeWorkerMutation();
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setIsAuthenticated(false);
+    };
+
+    window.addEventListener('downloader-unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('downloader-unauthorized', handleUnauthorized);
+    };
+  }, []);
 
   const validateAppleMusicUrl = (inputUrl: string) => {
     return /^https?:\/\/(beta\.)?music\.apple\.com\/.*$/.test(inputUrl);

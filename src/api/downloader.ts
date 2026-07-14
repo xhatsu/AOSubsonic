@@ -20,6 +20,11 @@ export class DownloaderAPI {
 
   setToken(token: string) {
     this.token = token;
+    if (token) {
+      localStorage.setItem('downloader_jwt', token);
+    } else {
+      localStorage.removeItem('downloader_jwt');
+    }
   }
 
   getToken() {
@@ -42,6 +47,7 @@ export class DownloaderAPI {
     }
     
     this.token = data.token;
+    localStorage.setItem('downloader_jwt', data.token);
     return data.token;
   }
 
@@ -49,9 +55,18 @@ export class DownloaderAPI {
     return this.token ? { 'Authorization': `Bearer ${this.token}` } : {};
   }
 
+  private handleResponse(response: Response): Response {
+    if (response.status === 401) {
+      this.setToken('');
+      window.dispatchEvent(new Event('downloader-unauthorized'));
+    }
+    return response;
+  }
+
   constructor() {
     // Relying on the server-side proxy
     this.baseUrl = '/api/downloader';
+    this.token = localStorage.getItem('downloader_jwt');
   }
 
   // Strict URL Validation for Apple Music
@@ -84,6 +99,7 @@ export class DownloaderAPI {
     }
 
     if (!response.ok) {
+      this.handleResponse(response);
       const errorData = await response.json().catch(() => null);
       throw new Error(errorData?.detail?.[0]?.msg || `Download request failed with status ${response.status}`);
     }
@@ -97,6 +113,7 @@ export class DownloaderAPI {
     const response = await fetch(`${this.baseUrl}/status/${jobId}`, {
       headers: this.getAuthHeaders()
     });
+    this.handleResponse(response);
     if (!response.ok) {
       throw new Error(`Failed to get status for job ${jobId}`);
     }
@@ -109,6 +126,7 @@ export class DownloaderAPI {
     const response = await fetch(`${this.baseUrl}/queue?detailed=true&limit=100`, {
       headers: this.getAuthHeaders()
     });
+    this.handleResponse(response);
     if (!response.ok) {
       throw new Error("Failed to fetch queue");
     }
@@ -121,6 +139,7 @@ export class DownloaderAPI {
     const response = await fetch(`${this.baseUrl}/recent-successes`, {
       headers: this.getAuthHeaders()
     });
+    this.handleResponse(response);
     if (!response.ok) {
       throw new Error("Failed to fetch recent successes");
     }
@@ -134,6 +153,7 @@ export class DownloaderAPI {
       method: 'POST',
       headers: this.getAuthHeaders()
     });
+    this.handleResponse(response);
     
     if (!response.ok) {
       throw new Error("Failed to resume worker");

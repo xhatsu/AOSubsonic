@@ -5,6 +5,7 @@ import { FiRefreshCw, FiEye, FiEyeOff, FiMoon, FiDroplet } from 'react-icons/fi'
 // @ts-ignore
 import LyricsPlusRenderer from '../utils/youlyplus/lyricsRenderer';
 import { fetchLyrics } from '../utils/lyricsFetcher';
+import { companionService } from '../services/CompanionService';
 import '../utils/youlyplus/lyrics.css';
 
 export const LyricsViewer = () => {
@@ -53,6 +54,10 @@ export const LyricsViewer = () => {
         selectors: ['#lyrics-mount-point'],
         disableNativeTick: true, // CRITICAL: Match the extension architecture
         getCurrentTime: () => {
+          const mode = usePlayerStore.getState().playbackMode;
+          if (mode === 'companion') {
+            return companionService.getCurrentTime();
+          }
           const audio = getAudio();
           return audio ? audio.currentTime : 0;
         }
@@ -91,27 +96,27 @@ export const LyricsViewer = () => {
         lastFpsTime = time;
       }
 
-      if (audio && renderer) {
-        if (!audio.paused) {
-          const currentAudioTime = audio.currentTime;
+      if (renderer) {
+        const mode = usePlayerStore.getState().playbackMode;
 
-          // If the hardware audio time updated, resync our interpolator
+        if (mode === 'companion') {
+          // FIX #5: In companion mode, <audio> element does not exist.
+          // Use CompanionService interpolation directly.
+          const companionTime = companionService.getCurrentTime();
+          renderer.updateCurrentTick(companionTime);
+        } else if (audio && !audio.paused) {
+          const currentAudioTime = audio.currentTime;
           if (Math.abs(currentAudioTime - lastAudioTime) > 0.001) {
             interpolatedTime = currentAudioTime;
             lastAudioTime = currentAudioTime;
           } else {
-            // Hardware time hasn't updated yet, extrapolate based on frame delta
             interpolatedTime += deltaMs / 1000;
           }
-
-          // Clamp to prevent wild desyncs if the thread stalls
           if (interpolatedTime > currentAudioTime + 0.5) {
             interpolatedTime = currentAudioTime;
           }
-
           renderer.updateCurrentTick(interpolatedTime);
-        } else {
-          // Send exact time if paused
+        } else if (audio) {
           renderer.updateCurrentTick(audio.currentTime);
         }
       }
