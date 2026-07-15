@@ -2,12 +2,8 @@ import type { QueueSong } from '../store/player.store';
 // @ts-ignore
 import { v1Tov2, parseAppleTTML } from './youlyplus/parser.js';
 
-const KPOE_SERVERS = [
+export const KPOE_SERVERS = [
   'https://lyricsplus.prjktla.my.id',
-  'https://lyricsplus.atomix.one',
-  'https://lyricsplus.binimum.org',
-  'https://lyricsplus-seven.vercel.app',
-  'https://lyricsplus.prjktla.workers.dev',
   'https://lyrics-plus-backend.vercel.app',
 ];
 
@@ -23,8 +19,12 @@ function fetchWithTimeout(url: string, timeoutMs = 6000): Promise<Response> {
   );
 }
 
-export async function fetchLyrics(song: QueueSong, onFetchingUrl?: (url: string) => void) {
+export async function fetchLyrics(
+  song: QueueSong, 
+  options: { onFetchingUrl?: (url: string) => void, forceServer?: string } = {}
+) {
   if (!song) return null;
+  const { onFetchingUrl, forceServer } = options;
 
   try {
     const params = new URLSearchParams({
@@ -42,93 +42,61 @@ export async function fetchLyrics(song: QueueSong, onFetchingUrl?: (url: string)
       params.append('duration', Math.round(song.duration).toString());
     }
 
-    // 0. Try Local Downloader API first
-    try {
-      // @ts-ignore - Read from k8s runtime env injected by server.cjs, fallback to Vite build env
-      const localApiBase = (window.__RUNTIME_ENV__ && window.__RUNTIME_ENV__.VITE_DOWNLOADER_API_URL) || import.meta.env.VITE_DOWNLOADER_API_URL;
-      if (localApiBase) {
-        const localApiUrl = `/api/lyrics?${params.toString()}`;
-        console.log("Attempting to fetch local API via Node Proxy:", localApiUrl);
-        if (onFetchingUrl) onFetchingUrl(localApiUrl);
-        // Increase timeout to 45 seconds since background scraping can take a long time
-        const cacheRes = await fetchWithTimeout(localApiUrl, 45000);
-        if (cacheRes.ok) {
-          const cacheData = await cacheRes.json();
-          if (cacheData && cacheData.results && cacheData.results.length > 0) {
-            const result = cacheData.results[0];
-            if (result.lyricsUrl) {
-              if (onFetchingUrl) onFetchingUrl(result.lyricsUrl);
-              const ttmlRes = await fetchWithTimeout(result.lyricsUrl);
-              if (ttmlRes.ok) {
-                const ttmlText = await ttmlRes.text();
-                const parsedTTML = parseAppleTTML(ttmlText);
-                if (parsedTTML && parsedTTML.lyrics && parsedTTML.lyrics.length > 0) {
-                  return {
-                    ...parsedTTML,
-                    data: parsedTTML.lyrics,
-                    metadata: {
-                      ...parsedTTML.metadata,
-                      source: cacheData.source === "LOCAL" ? "Local API" : "Local API (US)"
-                    }
-                  };
+    // Only use caches if we aren't forcing a specific server
+    if (!forceServer) {
+      // 0. Try Local Downloader API first
+      try {
+        // @ts-ignore - Read from k8s runtime env injected by server.cjs, fallback to Vite build env
+        const localApiBase = (window.__RUNTIME_ENV__ && window.__RUNTIME_ENV__.VITE_DOWNLOADER_API_URL) || import.meta.env.VITE_DOWNLOADER_API_URL;
+        if (localApiBase) {
+          const localApiUrl = `/api/lyrics?${params.toString()}`;
+          console.log("Attempting to fetch local API via Node Proxy:", localApiUrl);
+          if (onFetchingUrl) onFetchingUrl(localApiUrl);
+          // Increase timeout to 45 seconds since background scraping can take a long time
+          const cacheRes = await fetchWithTimeout(localApiUrl, 45000);
+          if (cacheRes.ok) {
+            const cacheData = await cacheRes.json();
+            if (cacheData && cacheData.results && cacheData.results.length > 0) {
+              const result = cacheData.results[0];
+              if (result.lyricsUrl) {
+                if (onFetchingUrl) onFetchingUrl(result.lyricsUrl);
+                const ttmlRes = await fetchWithTimeout(result.lyricsUrl);
+                if (ttmlRes.ok) {
+                  const ttmlText = await ttmlRes.text();
+                  const parsedTTML = parseAppleTTML(ttmlText);
+                  if (parsedTTML && parsedTTML.lyrics && parsedTTML.lyrics.length > 0) {
+                    return {
+                      ...parsedTTML,
+                      data: parsedTTML.lyrics,
+                      metadata: {
+                        ...parsedTTML.metadata,
+                        source: cacheData.source === "LOCAL" ? "Local API" : "Local API (US)"
+                      }
+                    };
+                  }
                 }
               }
             }
+          } else {
+            console.error("Local API returned status:", cacheRes.status);
           }
         } else {
-          console.error("Local API returned status:", cacheRes.status);
+          console.warn("VITE_DOWNLOADER_API_URL is not defined in env");
         }
-      } else {
-        console.warn("VITE_DOWNLOADER_API_URL is not defined in env");
+      } catch (e) {
+        console.error("Local Downloader API failed with error:", e);
+        console.warn("Local Downloader API failed, falling back to KPOE sweep");
       }
-    } catch (e) {
-      console.error("Local Downloader API failed with error:", e);
-      console.warn("Local Downloader API failed, falling back to BiniLyrics");
-    }
-
-    // 1. Try BiniLyrics Cache API first for ultra-fast TTML loading
-    try {
-      const cacheUrl = `https://lyrics-api.binimum.org/?${params.toString()}`;
-      if (onFetchingUrl) onFetchingUrl(cacheUrl);
-      const cacheRes = await fetchWithTimeout(cacheUrl);
-      if (cacheRes.ok) {
-        const cacheData = await cacheRes.json();
-        if (cacheData && cacheData.results && cacheData.results.length > 0) {
-          const result = cacheData.results[0];
-          if (result.lyricsUrl) {
-            if (onFetchingUrl) onFetchingUrl(result.lyricsUrl);
-            const ttmlRes = await fetchWithTimeout(result.lyricsUrl);
-            if (ttmlRes.ok) {
-              const ttmlText = await ttmlRes.text();
-              const parsedTTML = parseAppleTTML(ttmlText);
-              if (parsedTTML && parsedTTML.lyrics && parsedTTML.lyrics.length > 0) {
-                return {
-                  ...parsedTTML,
-                  data: parsedTTML.lyrics,
-                  metadata: {
-                    ...parsedTTML.metadata,
-                    source: "BiniLyrics"
-                  }
-                };
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Cache API failed, falling back to KPOE sweep");
     }
     
-    // 2. Fall back to sweeping KPOE_SERVERS
+    // 1. Fall back to sweeping KPOE_SERVERS (with forced server if requested)
     params.append('source', DEFAULT_KPOE_SOURCE_ORDER);
 
-    const shuffledServers = [...KPOE_SERVERS]
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3);
+    const serversToTry = forceServer ? [forceServer] : [...KPOE_SERVERS].sort(() => Math.random() - 0.5).slice(0, 3);
 
     let payload: any = null;
 
-    for (const base of shuffledServers) {
+    for (const base of serversToTry) {
       const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
       const targetUrl = `${normalizedBase}/v2/lyrics/get?${params.toString()}`;
       // Wrap the URL in a CORS proxy to allow fetching from the browser

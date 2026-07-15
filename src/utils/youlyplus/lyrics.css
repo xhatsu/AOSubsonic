@@ -78,9 +78,6 @@
     scroll-padding-top: 35%;
     scroll-padding-block-start: 35%;
     height: 100%;
-    /* Fade edges like the extension */
-    mask-image: linear-gradient(to bottom, transparent 0%, black 0.29em, black 85%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 0.29em, black 85%, transparent 100%);
 }
 
 #lyrics-plus-container-parent::-webkit-scrollbar {
@@ -1132,4 +1129,23 @@ canvas#lyplus-webgl-canvas {
     to {
         transform: translateY(0) translateZ(1px);
     }
+}
+/* Clean Mode (YouTube Music Style) overrides */
+.clean-mode-lyrics #lyrics-plus-container {
+    --lyplus-lyrics-pallete: #ffffff;
+    --lyplus-text-primary: #ffffff;
+    --lyplus-text-secondary: #777777;
+    --lyplus-text-inactive: #777777;
+    --lyplus-text-tertiary: #555555;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+.clean-mode-lyrics #lyrics-plus-container .lyrics-line {
+    filter: none !important;
+}
+
+.clean-mode-lyrics #lyrics-plus-container .lyrics-word {
+    filter: none !important;
 }

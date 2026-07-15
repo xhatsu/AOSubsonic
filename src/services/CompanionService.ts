@@ -17,6 +17,7 @@ class CompanionService {
   private playing: boolean = false;
   private volume: number = 100;
   private lastCommandTime: number = 0;
+  private lastSeekTime: number = 0;
 
   private _lyricsOffsetMs = 0;
 
@@ -38,42 +39,54 @@ class CompanionService {
   get lyricsOffsetMs(): number { return this._lyricsOffsetMs; }
 
   setLyricsOffsetMs(ms: number): void {
-    this._lyricsOffsetMs = Math.max(-5000, Math.min(5000, ms));
-    localStorage.setItem('companion_lyrics_offset_ms', String(this._lyricsOffsetMs));
+    this._lyricsOffsetMs = ms;
+    localStorage.setItem('companion_lyrics_offset_ms', ms.toString());
   }
 
   connect(): void {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
+    if (this.ws || this.shouldReconnect) return;
     this.shouldReconnect = true;
-    this.reconnectDelay = 1000;
+    this.connectInner();
+  }
 
-    try {
-      this.ws = new WebSocket('ws://127.0.0.1:12345');
-    } catch {
-      this.scheduleReconnect();
-      return;
-    }
+  private connectInner(): void {
+    if (!this.shouldReconnect) return;
 
-    this.ws.onopen = () => { 
-      this.reconnectDelay = 1000; 
+    this.ws = new WebSocket('ws://127.0.0.1:12345');
+
+    this.ws.onopen = () => {
+      console.log('[companion] WebSocket connected');
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
       const config = usePlayerStore.getState().companionConfig;
       this.setConfig(config.wasapiExclusive, config.wasapiDevice);
     };
 
-    this.ws.onmessage = (event) => {
-      try {
-        this.handleMessage(JSON.parse(event.data));
-      } catch { }
-    };
-
     this.ws.onclose = () => {
+      console.log('[companion] WebSocket disconnected');
       this.ws = null;
       this.playing = false;
       this.connectionCbs.forEach(cb => cb(false));
-      if (this.shouldReconnect) this.scheduleReconnect();
+      
+      if (this.shouldReconnect) {
+        this.reconnectTimer = setTimeout(() => this.connectInner(), this.reconnectDelay);
+      }
     };
 
-    this.ws.onerror = () => { };
+    this.ws.onerror = (err) => {
+      console.error('[companion] WebSocket error:', err);
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        this.handleMessage(msg);
+      } catch (e) {
+        console.error('[companion] Error parsing ws message:', e);
+      }
+    };
   }
 
   disconnect(): void {
@@ -86,21 +99,10 @@ class CompanionService {
       this.ws.close();
       this.ws = null;
     }
-    this.playing = false;
-    this.connectionCbs.forEach(cb => cb(false));
   }
 
   isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) return;
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect();
-    }, this.reconnectDelay);
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 10000);
   }
 
   private handleMessage(msg: { type: string; [key: string]: unknown }): void {
@@ -118,6 +120,13 @@ class CompanionService {
         break;
 
       case 'time-update': {
+        // Ignore time updates that arrive immediately after we send a SEEK command,
+        // as they are likely stale messages already in transit.
+        // We use a 2-second debounce because mpv can sometimes take over 1s to respond to a seek
+        // over the network, especially on slower connections or if the file is large.
+        if (performance.now() - this.lastSeekTime < 2000) {
+          break;
+        }
         const pos = msg.position as number;
         const dur = msg.duration as number;
         if (typeof pos === 'number' && !isNaN(pos)) {
@@ -171,8 +180,9 @@ class CompanionService {
     this.lastServerPos = 0;
     this.lastServerTime = performance.now();
     this.lastDuration = 0;
-    this.playing = true;
-    this.stateChangeCbs.forEach(cb => cb('playing'));
+    // DO NOT set this.playing = true here! Wait for the backend to emit state-change: playing.
+    // If we set it true now, getRawPosition() instantly starts advancing time before the track actually starts, causing a visual stutter when the track actually begins and syncs back to 0.
+    this.playing = false; 
     this.send({ type: 'play', url: streamUrl });
   }
 
@@ -185,8 +195,8 @@ class CompanionService {
   
   resume(): void { 
     this.lastCommandTime = performance.now();
-    this.playing = true;
-    this.stateChangeCbs.forEach(cb => cb('playing'));
+    // Same here, let the backend dictate when it actually resumed to prevent time stutter
+    this.playing = false;
     this.send({ type: 'resume' }); 
   }
 
@@ -199,6 +209,8 @@ class CompanionService {
   }
 
   seek(position: number): void {
+    this.lastCommandTime = performance.now();
+    this.lastSeekTime = performance.now();
     this.lastServerPos = position;
     this.lastServerTime = performance.now();
     this.send({ type: 'seek', position });

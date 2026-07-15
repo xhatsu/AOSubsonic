@@ -130,14 +130,18 @@ export class LLMService {
     return context;
   }
 
-  static getSystemPrompt(): string {
-    return `You are an elite music curator and DJ with 20 years of experience crafting perfect playlists. You have deep knowledge of music theory, genre relationships, tempo mapping, and emotional arcs in music. You understand that a great playlist isn't just songs that sound similar — it's a journey with pacing, contrast, and flow.
+  static getSystemPrompt(customRequirement?: string): string {
+    let prompt = `You are an elite music curator and DJ with 20 years of experience crafting perfect playlists. You have deep knowledge of music theory, genre relationships, tempo mapping, and emotional arcs in music. You understand that a great playlist isn't just songs that sound similar — it's a journey with pacing, contrast, and flow.
 
 ## Your Task
 
-Using ONLY songs from the library below, create personalized playlist recommendations for this listener. You must return:
+Using ONLY songs from the library below, create personalized playlist recommendations for this listener. You must return:`;
 
-1. **5-8 Themed Playlists** — Each playlist should be 15-30 songs.
+    if (customRequirement && customRequirement.trim().length > 0) {
+        prompt += `\n\n### 🔴 CRITICAL USER INSTRUCTION 🔴\nThe user has specifically requested the following theme/vibe/rule for this generation:\n"${customRequirement}"\nYou MUST strictly prioritize this request when generating the playlists and moods.`;
+    }
+
+    prompt += `\n\n1. **5-8 Themed Playlists** — Each playlist should be 15-30 songs.
    Think of these like Spotify's "Made For You" playlists. The focus should be on creating a flowing musical journey rather than just clumping similar-sounding songs or artists together. 
    Each needs:
    - A **simple, familiar name**. Avoid edgy, overly clever, or complex titles. Use everyday phrases that clearly set the vibe (e.g., "Refresh Day", "Time for Study", "Feeling Blue", "Up a Beat").
@@ -193,6 +197,7 @@ Return ONLY valid JSON, no markdown formatting (\`\`\`json etc), no explanations
     }
   }
 }`;
+    return prompt;
   }
 
   static async fetchOpenRouter(apiKey: string, model: string, prompt: string): Promise<LLMResponse> {

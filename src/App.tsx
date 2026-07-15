@@ -10,6 +10,7 @@ import { AudioPlayer } from './components/AudioPlayer';
 import { LyricsViewer } from './components/LyricsViewer';
 import { QueuePanel } from './components/QueuePanel';
 import { MobileApp } from './mobile/MobileApp';
+import { DynamicBackground } from './components/DynamicBackground';
 
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -29,6 +30,7 @@ function App() {
   const config = useAuthStore((state) => state.config);
   const showLyrics = useUIStore((state) => state.showLyrics);
   const themeColor = useUIStore((state) => state.themeColor);
+  const lyricsStyle = useUIStore((state) => state.lyricsStyle);
   const showQueue = usePlayerStore((state) => state.showQueue);
   const queue = usePlayerStore((state) => state.queue);
   const currentIndex = usePlayerStore((state) => state.currentIndex);
@@ -55,35 +57,29 @@ function App() {
           <div className="flex flex-1 overflow-hidden relative">
             <Sidebar />
             <MainContent />
-          </div>
-
-          {/* Floating Lyrics Panel */}
-          <div
-            className={`fixed top-0 right-0 w-[450px] h-[calc(100vh-6rem)] border-l border-white/5 bg-zinc-950 shadow-2xl z-[100] transition-transform duration-300 ease-in-out ${showLyrics ? 'translate-x-0' : 'translate-x-full'} overflow-hidden`}
-          >
-            {/* Separate Background behind the transparent LyricsViewer */}
-            {currentSong?.coverArtUrl && (
-              <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-zinc-950">
-                <img
-                  src={currentSong.coverArtUrl}
-                  alt=""
-                  className="absolute top-1/2 left-1/2 w-64 h-64 object-cover opacity-90"
-                  style={{ 
-                    filter: 'blur(8px) saturate(200%)',
-                    transform: 'translate(-50%, -50%) scale(10)'
-                  }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/60 to-zinc-950/90" />
+            
+            {/* Integrated Lyrics Panel */}
+            <div 
+              className="flex-shrink-0 bg-zinc-950 border-white/10 relative overflow-hidden transition-[width,border-width] duration-300 ease-in-out"
+              style={{ width: showLyrics ? '450px' : '0px', borderLeftWidth: showLyrics ? '1px' : '0px' }}
+            >
+              {/* Inner wrapper ensures content doesn't squish during animation */}
+              <div className="w-[450px] h-full absolute top-0 right-0">
+                {lyricsStyle === 'dynamic' ? (
+                  <DynamicBackground imageUrl={currentSong?.coverArtUrl} isVisible={showLyrics} />
+                ) : (
+                  <div className="absolute inset-0 z-0 bg-black pointer-events-none" />
+                )}
+                <div className="relative z-10 w-full h-full">
+                  <LyricsViewer />
+                </div>
               </div>
-            )}
-            <div className="relative z-10 w-full h-full">
-              <LyricsViewer />
             </div>
           </div>
 
           {/* Floating Queue Panel */}
           <div
-            className={`fixed top-0 right-0 w-[400px] h-[calc(100vh-6rem)] border-l border-white/5 bg-zinc-950 shadow-2xl z-[110] transition-transform duration-300 ease-in-out ${showQueue ? 'translate-x-0' : 'translate-x-full'}`}
+            className={`fixed top-3 right-3 w-[400px] bottom-[calc(6rem+0.75rem)] rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl z-[110] transition-transform duration-300 ease-in-out ${showQueue ? 'translate-x-0' : 'translate-x-[calc(100%+1rem)]'}`}
           >
             <QueuePanel />
           </div>

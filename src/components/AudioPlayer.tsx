@@ -69,7 +69,20 @@ export const AudioPlayer = () => {
   }, [playbackMode]);
 
   useEffect(() => {
-    if (!currentSong) return;
+    if (!currentSong) {
+      if (playbackMode === 'companion') {
+        companionService.stop();
+      } else {
+        const audio = audioRef.current;
+        if (audio) {
+          audio.pause();
+          audio.removeAttribute('src');
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
+        }
+      }
+      return;
+    }
+    
     if (playbackMode === 'companion') {
       if (isPlaying) {
         // If we haven't actually loaded this track into the companion daemon yet, load it now!

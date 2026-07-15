@@ -1,17 +1,20 @@
 import { useEffect, useState, useRef } from 'react';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiRefreshCw, FiEye, FiEyeOff, FiMoon, FiDroplet } from 'react-icons/fi';
+import { FiRefreshCw, FiEye, FiEyeOff, FiMoon, FiDroplet, FiServer } from 'react-icons/fi';
 // @ts-ignore
 import LyricsPlusRenderer from '../utils/youlyplus/lyricsRenderer';
-import { fetchLyrics } from '../utils/lyricsFetcher';
+import { fetchLyrics, KPOE_SERVERS } from '../utils/lyricsFetcher';
 import { companionService } from '../services/CompanionService';
 import '../utils/youlyplus/lyrics.css';
+
+const SERVERS = ['auto', ...KPOE_SERVERS];
 
 export const LyricsViewer = () => {
   const queue = usePlayerStore((state) => state.queue);
   const currentIndex = usePlayerStore((state) => state.currentIndex);
   const currentSong = queue[currentIndex];
+  const [serverIndex, setServerIndex] = useState(0);
   const themeColor = useUIStore((state) => state.themeColor);
   const showFps = useUIStore((state) => state.showFps);
   const toggleFps = useUIStore((state) => state.toggleFps);
@@ -144,23 +147,27 @@ export const LyricsViewer = () => {
       }
 
       setLyricsSource('Initializing fetch...');
-
-      const lyricsData = await fetchLyrics(currentSong, (url) => {
-        if (isMounted) {
+      
+      const server = SERVERS[serverIndex];
+      const fetchOptions = {
+        onFetchingUrl: (url: any) => {
+          if (!isMounted) return;
           try {
-            const parsedUrl = new URL(url);
-            let displayHost = parsedUrl.hostname;
-            // If it's the allorigins proxy, extract the actual target URL
+            const urlObj = new URL(url);
+            let displayHost = urlObj.hostname.replace('www.', '');
             if (displayHost === 'api.allorigins.win') {
-              const targetUrl = parsedUrl.searchParams.get('url');
-              if (targetUrl) displayHost = new URL(targetUrl).hostname;
+              const targetUrl = urlObj.searchParams.get('url');
+              if (targetUrl) displayHost = new URL(targetUrl).hostname.replace('www.', '');
             }
             setLyricsSource(`Fetching: ${displayHost}...`);
-          } catch {
+          } catch (e) {
             setLyricsSource('Fetching...');
           }
-        }
-      });
+        },
+        forceServer: server === 'auto' ? undefined : server
+      };
+
+      const lyricsData = await fetchLyrics(currentSong, fetchOptions);
 
       if (!isMounted) return;
 
@@ -197,17 +204,13 @@ export const LyricsViewer = () => {
         rendererRef.current.cleanupLyrics();
       }
     };
-  }, [currentSong, forceResetKey]);
+  }, [currentSong, forceResetKey, serverIndex]);
 
   // Update theme color for the renderer dynamically
   useEffect(() => {
     const container = document.getElementById('lyrics-plus-container');
     if (container) {
-      if (lyricsStyle === 'clean') {
-        container.style.setProperty('--lyplus-lyrics-pallete', '#ffffff');
-      } else if (themeColor) {
-        container.style.setProperty('--lyplus-lyrics-pallete', themeColor);
-      }
+      container.style.setProperty('--lyplus-lyrics-pallete', '#ffffff');
     }
   }, [themeColor, currentSong, lyricsStyle]);
 
@@ -246,20 +249,37 @@ export const LyricsViewer = () => {
         </button>
 
         {currentSong && (
-          <button
-            onClick={handleRefresh}
-            className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all"
-            title="Reload Lyrics"
-          >
-            <FiRefreshCw className="text-lg" />
-          </button>
+          <>
+            <button
+              onClick={handleRefresh}
+              className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all"
+              title="Reload Lyrics"
+            >
+              <FiRefreshCw className="text-lg" />
+            </button>
+
+            <button
+              onClick={() => {
+                setServerIndex(prev => (prev + 1) % SERVERS.length);
+              }}
+              className="bg-white/10 hover:bg-white/20 text-white p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all relative flex items-center justify-center"
+              title={`Switch Server (Current: ${SERVERS[serverIndex]})`}
+            >
+              <FiServer className="text-lg" />
+              {serverIndex > 0 && (
+                <div className="absolute -top-1 -right-1 bg-zinc-700/80 backdrop-blur-md text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white shadow-sm border border-white/20">
+                  {SERVERS[serverIndex].replace('https://', '').substring(0, 3).toUpperCase()}
+                </div>
+              )}
+            </button>
+          </>
         )}
       </div>
 
       <div
         id="lyrics-mount-point"
         ref={containerRef}
-        className="w-full h-full overflow-hidden relative z-10"
+        className={`w-full h-full overflow-hidden relative z-10 ${lyricsStyle === 'clean' ? 'clean-mode-lyrics' : ''}`}
         onScroll={(e) => {
           // Sync header scroll position via CSS variable for maximum performance
           const target = e.target as HTMLDivElement;

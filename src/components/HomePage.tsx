@@ -7,7 +7,8 @@ import {
   useGetFrequentAlbums, 
   useGetRecentAlbums, 
   useGetAlbumsByYear, 
-  useGetStarred2 
+  useGetStarred2,
+  useGetRandomSongsQuery
 } from '../api/hooks';
 import { SubsonicController } from '../api/subsonic';
 import { CachedImage } from './CachedImage';
@@ -57,6 +58,7 @@ export const HomePage = () => {
   const [manualResponse, setManualResponse] = useState('');
   const [copied, setCopied] = useState(false);
   const [showManualInput, setShowManualInput] = useState(false);
+  const [aiPromptInstruction, setAiPromptInstruction] = useState('');
 
   // Spotlight State
   const [spotlightColor, setSpotlightColor] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export const HomePage = () => {
   const { data: frequentData } = useGetFrequentAlbums(15);
   const { data: recentData } = useGetRecentAlbums(15);
   const { data: starredData } = useGetStarred2();
+  const { data: randomSongsData } = useGetRandomSongsQuery(10);
   
   const topAlbums = frequentData?.albumList?.album?.slice(0, 5) || recentData?.albumList?.album?.slice(0, 5) || [];
   const topAlbum = topAlbums[spotlightIndex] || topAlbums[0];
@@ -80,6 +83,14 @@ export const HomePage = () => {
 
   useEffect(() => {
     if (topAlbum?.coverArt && ctrl) {
+      const cacheKey = `spotlight_color_${topAlbum.coverArt}`;
+      const cachedColor = localStorage.getItem(cacheKey);
+      
+      // Instantly load cached color if available to prevent UI pop-in
+      if (cachedColor) {
+        setSpotlightColor(cachedColor);
+      }
+
       const img = new Image();
       img.crossOrigin = 'Anonymous';
       img.src = ctrl.getCoverArtUrl(topAlbum.coverArt);
@@ -89,8 +100,12 @@ export const HomePage = () => {
           const swatches = Object.values(palette).filter(s => s !== null);
           if (swatches.length > 0) {
             swatches.sort((a, b) => b!.population - a!.population);
-            setSpotlightColor(swatches[0]!.hex);
-          } else {
+            const hex = swatches[0]!.hex;
+            if (hex !== cachedColor) {
+                setSpotlightColor(hex);
+                localStorage.setItem(cacheKey, hex);
+            }
+          } else if (!cachedColor) {
             setSpotlightColor(null);
           }
         }).catch(err => console.error("Vibrant error:", err));
@@ -158,13 +173,13 @@ export const HomePage = () => {
       const prompt = await LLMService.generatePromptContext(ctrl);
       
       if (llmProvider === 'manual' || !llmApiKey) {
-        setManualPrompt(prompt + "\\n\\n" + LLMService.getSystemPrompt());
+        setManualPrompt(prompt + "\\n\\n" + LLMService.getSystemPrompt(aiPromptInstruction));
         setShowManualInput(true);
         setIsGenerating(false);
         return;
       }
 
-      const fullPrompt = prompt + "\\n\\n" + LLMService.getSystemPrompt();
+      const fullPrompt = prompt + "\\n\\n" + LLMService.getSystemPrompt(aiPromptInstruction);
       let response: LLMResponse;
       
       response = await LLMService.fetchOpenRouter(llmApiKey, llmModelName, fullPrompt);
@@ -280,7 +295,7 @@ export const HomePage = () => {
         {/* Glow effect */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -mr-48 -mt-48 pointer-events-none"></div>
         
-        <div className="flex items-center justify-between mb-6 relative z-10">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 relative z-10 gap-4">
           <div className="flex items-center space-x-4">
             <h2 className="text-3xl font-bold text-white tracking-tight">
               For You
@@ -291,9 +306,21 @@ export const HomePage = () => {
               </span>
             )}
           </div>
-          <button onClick={handleGenerateLLM} disabled={isGenerating} className="text-sm bg-primary/20 text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-full font-bold transition-colors">
-            {isGenerating ? 'Generating...' : llmResponse ? 'Refresh AI' : 'Generate with AI'}
-          </button>
+          <div className="flex w-full md:w-auto space-x-2">
+            <input 
+              type="text" 
+              placeholder="Custom vibe? (e.g. 'Upbeat workout')" 
+              value={aiPromptInstruction}
+              onChange={(e) => setAiPromptInstruction(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleGenerateLLM();
+              }}
+              className="flex-1 md:w-64 bg-zinc-900/50 border border-zinc-700/50 text-white px-4 py-2 rounded-full text-sm focus:outline-none focus:border-primary/50 transition-colors"
+            />
+            <button onClick={handleGenerateLLM} disabled={isGenerating} className="text-sm bg-primary/20 text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-full font-bold transition-colors whitespace-nowrap flex-shrink-0">
+              {isGenerating ? 'Generating...' : llmResponse ? 'Refresh AI' : 'Generate with AI'}
+            </button>
+          </div>
         </div>
 
         {showManualInput && (
@@ -410,6 +437,39 @@ export const HomePage = () => {
           </div>
         ))}
       </ScrollRow>
+
+      {/* Rediscover / Forgotten Gems */}
+      {randomSongsData?.randomSongs?.song && randomSongsData.randomSongs.song.length > 0 && (
+        <div className="mb-12">
+          <h2 className="text-3xl font-bold text-white px-2 mb-6 tracking-tight">
+            Rediscover
+          </h2>
+          <div className="space-y-2 px-2">
+            {randomSongsData.randomSongs.song.map((song: any, index: number) => (
+              <div key={`random-${song.id}-${index}`} onClick={() => playSongList([song.id])} className="flex items-center p-3 hover:bg-zinc-800/50 rounded-xl cursor-pointer transition-colors group">
+                <div className="w-8 text-center font-bold mr-2 text-zinc-600">
+                  <FiActivity className="mx-auto" />
+                </div>
+                <div className="w-12 h-12 bg-zinc-800 rounded shadow overflow-hidden flex-shrink-0 mr-4 relative">
+                  {song.coverArt && ctrl && (
+                    <CachedImage id={song.coverArt} url={ctrl.getCoverArtUrl(song.coverArt)} alt={song.title} className="w-full h-full object-cover" />
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <FiPlay className="text-white fill-white" />
+                  </div>
+                </div>
+                <div className="flex-1 truncate">
+                  <div className="text-white font-medium truncate">{song.title}</div>
+                  <div className="text-zinc-400 text-sm truncate">{song.artist}</div>
+                </div>
+                <div className="text-sm font-medium text-zinc-500 bg-zinc-900 px-3 py-1 rounded-full hidden sm:block truncate max-w-[120px]">
+                  {song.album}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Top Songs */}
       <div className="mb-12">

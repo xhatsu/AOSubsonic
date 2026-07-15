@@ -1112,6 +1112,13 @@ export const MainContent = () => {
       return;
     }
 
+    const cacheKey = `dominant_color_${backgroundImageUrl}`;
+    const cachedColor = localStorage.getItem(cacheKey);
+
+    if (cachedColor) {
+      setDominantColor(cachedColor);
+    }
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = backgroundImageUrl;
@@ -1119,23 +1126,31 @@ export const MainContent = () => {
     img.onload = () => {
       Vibrant.from(img).getPalette()
         .then(palette => {
+          let hex = null;
           if (palette.Vibrant) {
-            setDominantColor(palette.Vibrant.hex);
+            hex = palette.Vibrant.hex;
           } else if (palette.Muted) {
-            setDominantColor(palette.Muted.hex);
-          } else {
+            hex = palette.Muted.hex;
+          }
+          
+          if (hex) {
+            if (hex !== cachedColor) {
+              setDominantColor(hex);
+              localStorage.setItem(cacheKey, hex);
+            }
+          } else if (!cachedColor) {
             setDominantColor(null);
           }
         })
         .catch(err => {
           console.error('Error extracting color:', err);
-          setDominantColor(null);
+          if (!cachedColor) setDominantColor(null);
         });
     };
     
     img.onerror = () => {
       console.error('Error loading image for color extraction');
-      setDominantColor(null);
+      if (!cachedColor) setDominantColor(null);
     };
   }, [backgroundImageUrl]);
 
