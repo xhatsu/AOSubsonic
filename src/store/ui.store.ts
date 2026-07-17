@@ -41,6 +41,15 @@ interface UIState {
 
   homeForYouData: any;
   setHomeForYouData: (data: any) => void;
+
+  languageStrictness: number;
+  setLanguageStrictness: (strictness: number) => void;
+
+  infiniteRadio: boolean;
+  setInfiniteRadio: (enabled: boolean) => void;
+
+  radioAlgorithm: 'star' | 'chain';
+  setRadioAlgorithm: (algo: 'star' | 'chain') => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -82,6 +91,15 @@ export const useUIStore = create<UIState>()(
 
       homeForYouData: null,
       setHomeForYouData: (data) => set({ homeForYouData: data }),
+
+      languageStrictness: 0.05,
+      setLanguageStrictness: (strictness) => set({ languageStrictness: strictness }),
+
+      infiniteRadio: false,
+      setInfiniteRadio: (enabled) => set({ infiniteRadio: enabled }),
+
+      radioAlgorithm: 'chain',
+      setRadioAlgorithm: (algo) => set({ radioAlgorithm: algo }),
     }),
     {
       name: 'ui-storage',

@@ -125,108 +125,65 @@ async function startServer() {
   // Smart Radio — read-only similarity endpoint
   let vectorCache = null;
   let songMetaCache = null;
-  let energyBuckets = { calm: [], moderate: [], intense: [], mixed: [] };
+  let isCacheReady = false;
 
-  function scoreAxis(desc, lowKeywords, highKeywords) {
-    if (!desc) return 0.5;
-    const d = desc.toLowerCase();
-    let score = 0.5;
-    for (const w of lowKeywords) if (d.includes(w)) score -= 0.15;
-    for (const w of highKeywords) if (d.includes(w)) score += 0.15;
-    return Math.max(0, Math.min(1, score));
-  }
-
-  const AXES = {
-    tempo: {
-      low: ['slow', 'steady', 'mid', 'mid-tempo', 'laid-back', 'chill', 'languid'],
-      high: ['fast', 'rapid', 'frantic', 'upbeat', 'chaotic', 'driving', 'high-tempo', 'explosive']
-    },
-    vocal: {
-      low: ['instrumental', 'no vocals', 'wordless'],
-      high: ['male', 'female', 'soaring', 'duet', 'mixed', 'autotuned', 'choir', 'harmonies', 'chorus', 'chant']
-    },
-    mood: {
-      low: ['melancholic', 'sad', 'sorrowful', 'dark', 'moody', 'tense', 'bittersweet', 'haunting'],
-      high: ['euphoric', 'uplifting', 'bright', 'cheerful', 'sunny', 'happy', 'sweet']
-    },
-    acousticness: {
-      low: ['synth', 'synths', 'synthesizer', 'house', 'dance', 'trap', 'progressive', 'edm', 'electronic', 'drop', 'drops'],
-      high: ['acoustic', 'piano', 'guitar', 'guitars', 'strings', 'string', 'orchestral', 'organic', 'unplugged']
-    },
-    distortion: {
-      low: ['crisp', 'clean', 'smooth', 'soft', 'gentle', 'polished', 'pristine', 'clear'],
-      high: ['heavy', 'distortion', 'aggressive', 'raw', 'metal', 'gritty', 'fuzz', 'crunch', 'intense']
-    },
-    setting: {
-      low: ['gaming', 'focus', 'focused', 'studying', 'coffee', 'solitary', 'intimate', 'night', 'late', 'midnight', 'cozy', 'comforting', 'nostalgic', 'introspective', 'alone'],
-      high: ['workout', 'workouts', 'cardio', 'gym', 'festival', 'club', 'driving', 'drive', 'highway', 'party', 'anthem', 'stadium', 'social', 'celebratory']
-    }
-  };
+  let radioCachePromise = null;
 
   async function loadRadioCache() {
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
-      console.error('Missing Supabase credentials');
-      return false;
-    }
+    if (radioCachePromise) return radioCachePromise;
 
-    try {
-      const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/radio_songs?select=id,title,artist,description,album,vector&vector=not.is.null`, {
-        headers: {
-          'apikey': process.env.SUPABASE_KEY,
-          'Authorization': `Bearer ${process.env.SUPABASE_KEY}`
-        }
-      });
-      
-      if (!res.ok) {
-        throw new Error('Supabase fetch failed: ' + res.statusText);
+    radioCachePromise = (async () => {
+      const url = (process.env.SUPABASE_URL || '').trim();
+      const key = (process.env.SUPABASE_KEY || '').trim();
+
+      if (!url || !key) {
+        console.error('Missing Supabase credentials');
+        radioCachePromise = null;
+        return false;
       }
-      
-      const rows = await res.json();
 
-      vectorCache = new Map();
-      songMetaCache = new Map();
-      energyBuckets = { calm: [], moderate: [], intense: [], mixed: [] };
+      try {
+        const res = await fetch(`${url}/rest/v1/radio_songs?select=id,title,artist,description,album,vector,language&vector=not.is.null`, {
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`
+          }
+        });
 
-      for (const row of rows) {
-        if (row.vector) {
-          // Parse vector (Supabase returns a string representation or array)
-          const vecArr = typeof row.vector === 'string' ? JSON.parse(row.vector) : row.vector;
-          vectorCache.set(row.id, new Float32Array(vecArr));
+        if (!res.ok) {
+          throw new Error('Supabase fetch failed: ' + res.status + ' ' + res.statusText);
+        }
 
-          const desc = row.description || '';
-          const axes = {
-            tempo: scoreAxis(desc, AXES.tempo.low, AXES.tempo.high),
-            vocal: scoreAxis(desc, AXES.vocal.low, AXES.vocal.high),
-            mood: scoreAxis(desc, AXES.mood.low, AXES.mood.high),
-            acousticness: scoreAxis(desc, AXES.acousticness.low, AXES.acousticness.high),
-            distortion: scoreAxis(desc, AXES.distortion.low, AXES.distortion.high),
-            setting: scoreAxis(desc, AXES.setting.low, AXES.setting.high)
-          };
+        const rows = await res.json();
 
-          songMetaCache.set(row.id, {
-            title: row.title,
-            artist: row.artist,
-            album: row.album,
-            description: desc,
-            axes
-          });
+        vectorCache = new Map();
+        songMetaCache = new Map();
 
-          // Energy bucket
-          const energyMatch = desc.match(/Energy:\s*(\w+)/i);
-          if (energyMatch) {
-            const tag = energyMatch[1].toLowerCase();
-            if (energyBuckets[tag]) energyBuckets[tag].push(row.id);
-            else energyBuckets.mixed.push(row.id);
-          } else {
-            energyBuckets.mixed.push(row.id);
+        for (const row of rows) {
+          if (row.vector) {
+            // Parse vector (Supabase returns a string representation or array)
+            const vecArr = typeof row.vector === 'string' ? JSON.parse(row.vector) : row.vector;
+            vectorCache.set(row.id, new Float32Array(vecArr));
+
+            songMetaCache.set(row.id, {
+              title: row.title,
+              artist: row.artist,
+              album: row.album,
+              description: row.description || '',
+              language: row.language || ''
+            });
           }
         }
+        isCacheReady = true;
+        return true;
+      } catch (e) {
+        console.error('Failed to load radio DB:', e);
+        radioCachePromise = null;
+        isCacheReady = false;
+        return false;
       }
-      return true;
-    } catch (e) {
-      console.error('Failed to load radio DB:', e);
-      return false;
-    }
+    })();
+    return radioCachePromise;
   }
 
   function cosineSimilarity(a, b) {
@@ -255,7 +212,7 @@ async function startServer() {
     return false;
   }
 
-  function buildCluster(seedId, count, candidateIds = null) {
+  function buildCluster(seedId, count, candidateIds = null, languageStrictness = 0) {
     const currentVec = vectorCache.get(seedId);
     if (!currentVec) return [];
 
@@ -276,6 +233,13 @@ async function startServer() {
       // Reduce points for same album or artist to encourage variety
       if (seedAlbum && candMeta.album && candMeta.album.toLowerCase() === seedAlbum) {
         score -= 0.15;
+      }
+      
+      // Apply Language Match Bonus
+      if (languageStrictness > 0 && seedMeta.language && candMeta.language) {
+        if (seedMeta.language.toLowerCase() === candMeta.language.toLowerCase()) {
+          score += languageStrictness;
+        }
       }
 
       const candArtistTokens = extractArtists(candMeta.artist);
@@ -332,30 +296,106 @@ async function startServer() {
     return finalCluster;
   }
 
-  function autoLabel(sliderVals) {
-    let parts = [];
-    if (sliderVals) {
-      if (sliderVals.tempo > 0.65) parts.push("Fast");
-      if (sliderVals.tempo < 0.35) parts.push("Slow");
-      if (sliderVals.mood > 0.65) parts.push("Bright");
-      if (sliderVals.mood < 0.35) parts.push("Dark");
-      if (sliderVals.acousticness > 0.65) parts.push("Acoustic");
-      if (sliderVals.acousticness < 0.35) parts.push("Electronic");
-      if (sliderVals.distortion > 0.65) parts.push("Heavy");
-      if (sliderVals.distortion < 0.35) parts.push("Clean");
-      if (sliderVals.setting > 0.65) parts.push("Social");
-      if (sliderVals.setting < 0.35) parts.push("Introspective");
+  function findNextChainSong(currentSeedId, originalSeedId, excludeIds = [], languageStrictness = 0, recentIds = []) {
+    const currentVec = vectorCache.get(currentSeedId);
+    const originalVec = vectorCache.get(originalSeedId);
+    if (!currentVec || !originalVec) return null;
+
+    const currentMeta = songMetaCache.get(currentSeedId) || {};
+    const currentAlbum = currentMeta.album ? currentMeta.album.toLowerCase() : null;
+    const currentArtistTokens = extractArtists(currentMeta.artist);
+
+    // Build recent artist token set for chain-history penalty
+    const recentArtistTokens = new Set();
+    for (const rid of recentIds) {
+      const rMeta = songMetaCache.get(rid);
+      if (rMeta) {
+        for (const t of extractArtists(rMeta.artist)) {
+          recentArtistTokens.add(t);
+        }
+      }
     }
 
-    // Shuffle to get a variety of descriptor combinations
-    for (let i = parts.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [parts[i], parts[j]] = [parts[j], parts[i]];
+    const topN = 5;
+    const candidates = [];
+
+    const excludeSet = new Set(excludeIds);
+    // Don't pick the seeds themselves either
+    excludeSet.add(currentSeedId);
+    excludeSet.add(originalSeedId);
+
+    for (const [id, vec] of vectorCache) {
+      if (excludeSet.has(id)) continue;
+      const candMeta = songMetaCache.get(id);
+
+      // 85% current step, 15% original anchor — lets the chain walk further
+      const simCurrent = cosineSimilarity(currentVec, vec);
+      const simOriginal = cosineSimilarity(originalVec, vec);
+      let score = (0.85 * simCurrent) + (0.15 * simOriginal);
+
+      // Apply penalties relative to current seed to force it to walk away from same album/artist
+      if (currentAlbum && candMeta.album && candMeta.album.toLowerCase() === currentAlbum) {
+        score -= 0.20;
+      }
+
+      // Apply Language Match Bonus
+      if (languageStrictness > 0 && currentMeta.language && candMeta.language) {
+        if (currentMeta.language.toLowerCase() === candMeta.language.toLowerCase()) {
+          score += languageStrictness;
+        }
+      }
+
+      const candArtistTokens = extractArtists(candMeta.artist);
+      // Penalty for matching current song's artist
+      if (currentArtistTokens.length > 0 && candArtistTokens.length > 0 && hasArtistOverlap(currentArtistTokens, candArtistTokens)) {
+        score -= 0.35; 
+      }
+
+      // Penalty for matching any artist from the recent chain history
+      if (recentArtistTokens.size > 0 && candArtistTokens.length > 0) {
+        for (const t of candArtistTokens) {
+          if (recentArtistTokens.has(t)) {
+            score -= 0.05;
+          }
+        }
+      }
+
+      candidates.push({ id, score, ...candMeta });
+      candidates.sort((a, b) => b.score - a.score);
+      if (candidates.length > topN) candidates.pop();
     }
 
-    if (parts.length > 0) return parts.slice(0, 2).join(" & ") + " Mix";
-    return "Custom Tuned Mix";
+    if (candidates.length === 0) return null;
+
+    // Temperature-based weighted random sampling via softmax
+    const temperature = 0.15;
+    const expScores = candidates.map(c => Math.exp(c.score / temperature));
+    const sumExp = expScores.reduce((a, b) => a + b, 0);
+    const probs = expScores.map(e => e / sumExp);
+
+    let r = Math.random();
+    for (let i = 0; i < candidates.length; i++) {
+      r -= probs[i];
+      if (r <= 0) return candidates[i];
+    }
+    return candidates[candidates.length - 1];
   }
+
+
+
+  app.get('/api/radio/status', (req, res) => {
+    res.json({ ready: isCacheReady });
+  });
+
+  app.get('/api/radio/check', async (req, res) => {
+    if (!songMetaCache) {
+      const loaded = await loadRadioCache();
+      if (!loaded) return res.json([]);
+    }
+    const ids = (req.query.ids || '').split(',').filter(Boolean);
+    const existing = ids.filter(id => songMetaCache.has(id));
+    res.json(existing);
+  });
 
   app.get('/api/radio/foryou', async (req, res) => {
     if (!vectorCache) {
@@ -363,7 +403,7 @@ async function startServer() {
       if (!loaded) {
         return res.status(404).json({ error: 'Radio database not found. Run the admin tool first.' });
       }
-    } 
+    }
     const sections = [];
 
     // Generate 4 separate "Inspired by" mixes from frequent songs with distinct vectors
@@ -435,30 +475,39 @@ async function startServer() {
   });
 
   app.get('/api/radio/similar/:songId', async (req, res) => {
-    const { songId } = req.params;
-    const count = parseInt(req.query.count) || 30;
-
     if (!vectorCache) {
       const loaded = await loadRadioCache();
-      if (!loaded) {
-        return res.status(404).json({ error: 'Radio database not found. Run the admin tool first.' });
-      }
+      if (!loaded) return res.status(404).json({ error: 'Radio db not found' });
     }
-
-    const currentVec = vectorCache.get(songId);
-    if (!currentVec) {
+    const { songId } = req.params;
+    const count = parseInt(req.query.count) || 30;
+    const strictness = parseFloat(req.query.strictness) || 0;
+    
+    if (!vectorCache.has(songId)) {
       return res.status(404).json({ error: 'Song not found in radio database.' });
     }
+    
+    const cluster = buildCluster(songId, count, null, strictness);
+    res.json({ songs: cluster });
+  });
 
-    const results = [];
-    for (const [id, vec] of vectorCache) {
-      if (id === songId) continue;
-      results.push({ id, score: cosineSimilarity(currentVec, vec), ...songMetaCache.get(id) });
+  app.get('/api/radio/chain-next/:songId', async (req, res) => {
+    if (!vectorCache) {
+      const loaded = await loadRadioCache();
+      if (!loaded) return res.status(404).json({ error: 'Radio db not found' });
     }
-
-    results.sort((a, b) => b.score - a.score);
-    const topSongs = results.filter(r => r.id !== songId).slice(0, count);
-    res.json({ songs: topSongs });
+    const currentSeedId = req.params.songId;
+    const originalSeedId = req.query.original || currentSeedId;
+    const excludeIds = (req.query.exclude || '').split(',').filter(Boolean);
+    const strictness = parseFloat(req.query.strictness) || 0;
+    const recentIds = (req.query.recent || '').split(',').filter(Boolean);
+    
+    if (!vectorCache.has(currentSeedId) || !vectorCache.has(originalSeedId)) {
+      return res.status(404).json({ error: 'Seed song not found in radio database.' });
+    }
+    
+    const nextSong = findNextChainSong(currentSeedId, originalSeedId, excludeIds, strictness, recentIds);
+    res.json({ song: nextSong });
   });
 
   app.post('/api/radio/prompt', express.json(), async (req, res) => {
@@ -484,14 +533,14 @@ async function startServer() {
     }
 
     results.sort((a, b) => b.score - a.score);
-    
+
     const finalSongs = [];
     const albumCounts = {};
     const artistCounts = {};
-    
+
     const maxPerArtist = Math.max(2, Math.floor(count / 10));
     const maxPerAlbum = Math.max(2, Math.floor(count / 20));
-    
+
     const topScore = results.length > 0 ? results[0].score : 0;
 
     for (const song of results) {
@@ -504,7 +553,7 @@ async function startServer() {
           break;
         }
       }
-      
+
       const albumKey = song.album ? song.album.toLowerCase() : 'unknown_album_' + song.id;
       const albumCountSoFar = albumCounts[albumKey] || 0;
       if (albumCountSoFar >= maxPerAlbum && !albumKey.startsWith('unknown_album_')) {
@@ -513,24 +562,24 @@ async function startServer() {
 
       const artistTokens = extractArtists(song.artist);
       if (artistTokens.length === 0) artistTokens.push('unknown_artist_' + song.id);
-      
+
       let maxTokenCount = 0;
       for (const t of artistTokens) {
         if ((artistCounts[t] || 0) > maxTokenCount) maxTokenCount = artistCounts[t] || 0;
       }
-      
+
       if (maxTokenCount >= maxPerArtist && !artistTokens[0].startsWith('unknown_artist_')) {
         continue;
       }
-      
+
       albumCounts[albumKey] = albumCountSoFar + 1;
       for (const t of artistTokens) {
         artistCounts[t] = (artistCounts[t] || 0) + 1;
       }
-      
+
       finalSongs.push(song);
     }
-    
+
     res.json({ songs: finalSongs });
   });
 
@@ -569,6 +618,16 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT} (isDev: ${isDev})`);
+
+    // Pre-load the radio cache into memory at startup
+    console.log('Pre-loading radio database cache from Supabase...');
+    loadRadioCache().then(success => {
+      if (success) {
+        console.log('Radio vector cache pre-loaded successfully.');
+      } else {
+        console.warn('Failed to pre-load radio vector cache.');
+      }
+    });
   });
 }
 

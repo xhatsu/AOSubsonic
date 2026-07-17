@@ -82,7 +82,7 @@ export const AudioPlayer = () => {
       }
       return;
     }
-    
+
     if (playbackMode === 'companion') {
       if (isPlaying) {
         // If we haven't actually loaded this track into the companion daemon yet, load it now!

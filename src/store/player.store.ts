@@ -119,7 +119,15 @@ export const usePlayerStore = create<PlayerState>((set) => ({
     
     return { queue: newQueue, currentIndex: newIndex };
   }),
-  clearQueue: () => set({ queue: [], currentIndex: -1, isPlaying: false }),
+  clearQueue: () => set((state) => {
+    if (state.currentIndex >= 0 && state.currentIndex < state.queue.length) {
+      return {
+        queue: [state.queue[state.currentIndex]],
+        currentIndex: 0
+      };
+    }
+    return { queue: [], currentIndex: -1, isPlaying: false };
+  }),
   resetCurrentSong: () => set({ currentIndex: -1, isPlaying: false }),
   playFromQueue: (index) => set({ currentIndex: index, isPlaying: true }),
   toggleQueue: () => set((state) => ({ showQueue: !state.showQueue })),

@@ -11,7 +11,12 @@ export const Login = () => {
     e.preventDefault();
     if (serverUrl && username && password) {
       // Remove trailing slash if exists
-      const cleanUrl = serverUrl.replace(/\/$/, '');
+      let cleanUrl = serverUrl.replace(/\/$/, '').trim();
+      
+      // Auto prepend https:// if missing
+      if (!/^https?:\/\//i.test(cleanUrl)) {
+        cleanUrl = 'https://' + cleanUrl;
+      }
       setConfig({
         serverUrl: cleanUrl,
         username,
@@ -33,7 +38,7 @@ export const Login = () => {
               <label htmlFor="server" className="block text-sm font-medium text-zinc-300">Server URL</label>
               <input
                 id="server"
-                type="url"
+                type="text"
                 required
                 className="w-full px-3 py-2 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg focus:ring-primary focus:border-primary sm:text-sm text-white"
                 placeholder="https://music.example.com"

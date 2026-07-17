@@ -125,35 +125,74 @@ export const PlayerBar = () => {
     if (!currentSong || !ctrl || isRadioLoading) return;
     setIsRadioLoading(true);
     try {
-      const res = await fetch(`/api/radio/similar/${currentSong.id}`);
-      if (!res.ok) {
-        alert('Smart Radio not set up. Run the admin enrichment tool first.');
-        return;
-      }
-      const data = await res.json();
-      const songs = [];
-      for (const item of data.songs) {
-        try {
-          const songRes = await ctrl.getSong(item.id);
-          const song = songRes.song;
-          if (song) {
-            songs.push({
-              id: song.id,
-              title: song.title,
-              artist: song.artist,
-              album: song.album,
-              duration: song.duration,
-              streamUrl: ctrl.getStreamUrl(song.id),
-              coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
-            });
+      const { languageStrictness, radioAlgorithm } = useUIStore.getState();
+
+      if (radioAlgorithm === 'chain') {
+        const originalSeedId = currentSong.id;
+        let currentSeedId = originalSeedId;
+        const currentQueueIds = usePlayerStore.getState().queue.map(s => s.id);
+        const excludeIds = new Set(currentQueueIds);
+        const recentChainIds: string[] = [];
+
+        for (let i = 0; i < 15; i++) {
+          const excludeStr = Array.from(excludeIds).join(',');
+          const recentStr = recentChainIds.slice(-5).join(',');
+          const res = await fetch(`/api/radio/chain-next/${currentSeedId}?original=${originalSeedId}&exclude=${excludeStr}&strictness=${languageStrictness}&recent=${recentStr}`);
+          if (!res.ok) {
+            if (i === 0) alert('Smart Radio not set up. Run the admin enrichment tool first.');
+            break;
           }
-        } catch (e) {
-          // skip failed songs
+          const data = await res.json();
+          if (!data.song) break; // no more candidates
+
+          excludeIds.add(data.song.id);
+
+          try {
+            const songRes = await ctrl.getSong(data.song.id);
+            const song = songRes.song;
+            if (song) {
+              usePlayerStore.getState().addToQueue({
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                album: song.album,
+                duration: song.duration,
+                streamUrl: ctrl.getStreamUrl(song.id),
+                coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
+              });
+              currentSeedId = song.id;
+              recentChainIds.push(song.id);
+            }
+          } catch (e) { }
         }
-      }
-      if (songs.length > 0) {
-        addListToQueue(songs);
-        // Optional: show a toast here if you have a toast system
+      } else {
+        const res = await fetch(`/api/radio/similar/${currentSong.id}?strictness=${languageStrictness}&count=15`);
+        if (!res.ok) {
+          alert('Smart Radio not set up. Run the admin enrichment tool first.');
+          return;
+        }
+        const data = await res.json();
+        const songs = [];
+        for (const item of data.songs) {
+          try {
+            const songRes = await ctrl.getSong(item.id);
+            const song = songRes.song;
+            if (song) {
+              songs.push({
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                album: song.album,
+                duration: song.duration,
+                streamUrl: ctrl.getStreamUrl(song.id),
+                coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
+              });
+            }
+          } catch (e) { }
+        }
+        if (songs.length > 0) {
+          addListToQueue(songs);
+        }
       }
     } catch (e) {
       console.error('Radio error:', e);

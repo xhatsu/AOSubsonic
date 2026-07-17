@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { FiX, FiCheck, FiMusic, FiSearch, FiRefreshCw, FiAlertCircle, FiRepeat } from 'react-icons/fi';
 import { downloaderApi } from '../api/downloader';
 import type { AppleMusicSearchResult } from '../api/downloader';
+import { useAuthStore } from '../store/auth.store';
+import { SubsonicController } from '../api/subsonic';
 
 interface AppleMusicSearchModalProps {
   isOpen: boolean;
@@ -20,10 +22,14 @@ export const AppleMusicSearchModal: React.FC<AppleMusicSearchModalProps> = ({
   onClose, 
   onDownloadSuccess 
 }) => {
+  const { config } = useAuthStore();
+  const ctrl = React.useMemo(() => config ? new SubsonicController(config) : null, [config]);
+  
   const [phase, setPhase] = useState<'loading' | 'results' | 'not-found' | 'error' | 'downloading'>('loading');
   const [editTrack, setEditTrack] = useState('');
   const [editArtist, setEditArtist] = useState('');
   const [rawTitle, setRawTitle] = useState('');
+  const [existingLibraryIds, setExistingLibraryIds] = useState<string[]>([]);
   const [results, setResults] = useState<AppleMusicSearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState('');
@@ -55,6 +61,28 @@ export const AppleMusicSearchModal: React.FC<AppleMusicSearchModalProps> = ({
         setResults(apiResults);
         setSelectedIndex(0);
         setPhase('results');
+        
+        if (ctrl && apiResults.length > 0) {
+          const checkPromises = apiResults.map(async (r) => {
+            try {
+              const res = await ctrl.search3(`${r.track_name} ${r.artist_name}`, 0, 0, 5);
+              const songs = res?.searchResult3?.song || [];
+              const exists = songs.some((s: any) => 
+                s.title.toLowerCase().includes(r.track_name.toLowerCase()) || 
+                r.track_name.toLowerCase().includes(s.title.toLowerCase())
+              );
+              if (exists) return r.song_id;
+            } catch (e) {
+              console.error('Subsonic search error:', e);
+            }
+            return null;
+          });
+          
+          Promise.all(checkPromises).then(results => {
+            const existingIds = results.filter(Boolean) as string[];
+            setExistingLibraryIds(existingIds);
+          });
+        }
       } else {
         setPhase('not-found');
       }
@@ -72,6 +100,7 @@ export const AppleMusicSearchModal: React.FC<AppleMusicSearchModalProps> = ({
       setEditArtist('');
       setRawTitle('');
       setResults([]);
+      setExistingLibraryIds([]);
       setSelectedIndex(0);
       setErrorMsg('');
       return;
@@ -271,7 +300,14 @@ export const AppleMusicSearchModal: React.FC<AppleMusicSearchModalProps> = ({
                         />
                       </div>
                       <div className="flex-1 overflow-hidden">
-                        <div className="font-bold text-sm text-white truncate leading-tight">{r.track_name || 'Unknown Track'}</div>
+                        <div className="font-bold text-sm text-white truncate leading-tight flex items-center gap-2">
+                          {r.track_name || 'Unknown Track'}
+                          {existingLibraryIds.includes(r.song_id) && (
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-[9px] font-bold tracking-widest uppercase shrink-0">
+                              <FiCheck size={10} /> In Library
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-white truncate mt-0.5 leading-tight">{r.artist_name || 'Unknown Artist'}</div>
                         <div className="text-[10px] text-white flex flex-wrap items-center gap-1.5 mt-1">
                           {r.album_name && (

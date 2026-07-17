@@ -207,7 +207,7 @@ Return ONLY valid JSON, no markdown formatting (\`\`\`json etc), no explanations
       },
       body: JSON.stringify({
         model: "google/gemini-embedding-2", // MUST match the model used in radio-admin/app.py
-        input: prompt
+        input: `task: search query | query: ${prompt}`
       })
     });
 

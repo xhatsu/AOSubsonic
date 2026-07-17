@@ -17,6 +17,7 @@ export const LyricsViewer = () => {
   const [serverIndex, setServerIndex] = useState(0);
   const themeColor = useUIStore((state) => state.themeColor);
   const showFps = useUIStore((state) => state.showFps);
+  const showLyrics = useUIStore((state) => state.showLyrics);
   const toggleFps = useUIStore((state) => state.toggleFps);
   const lyricsStyle = useUIStore((state) => state.lyricsStyle);
   const setLyricsStyle = useUIStore((state) => state.setLyricsStyle);
@@ -77,6 +78,8 @@ export const LyricsViewer = () => {
 
   // Run our own lightweight rAF sync loop (like songTracker.js does in the extension)
   useEffect(() => {
+    if (!showLyrics) return; // CRITICAL: Detach loop and save CPU/GPU when closed
+
     let lastAudioTime = -1;
     let interpolatedTime = 0;
     let lastRafTime = performance.now();
@@ -135,7 +138,7 @@ export const LyricsViewer = () => {
         rafIdRef.current = null;
       }
     };
-  }, []);
+  }, [showLyrics]);
 
   useEffect(() => {
     if (!currentSong || !rendererRef.current) return;

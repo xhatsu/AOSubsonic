@@ -1,14 +1,104 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { usePlayerStore } from '../store/player.store';
-import { FiX, FiTrash2, FiPlay, FiMusic, FiMenu, FiShuffle } from 'react-icons/fi';
+import { useUIStore } from '../store/ui.store';
+import { FiX, FiTrash2, FiPlay, FiMusic, FiMenu, FiShuffle, FiRadio, FiLoader, FiRefreshCw } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
+import { useAuthStore } from '../store/auth.store';
+import { SubsonicController } from '../api/subsonic';
 
 export const QueuePanel = () => {
-  const { queue, currentIndex, isPlaying, playFromQueue, removeFromQueue, clearQueue, toggleQueue, moveInQueue, shuffleQueue } = usePlayerStore();
+  const { queue, currentIndex, isPlaying, playFromQueue, removeFromQueue, clearQueue, toggleQueue, moveInQueue, shuffleQueue, addListToQueue } = usePlayerStore();
+  const { infiniteRadio, setInfiniteRadio } = useUIStore();
   const activeItemRef = useRef<HTMLDivElement | null>(null);
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const [isRadioLoading, setIsRadioLoading] = useState(false);
+  const [lastFetchedQueueLength, setLastFetchedQueueLength] = useState(0);
+  const config = useAuthStore(state => state.config);
+  const ctrl = useMemo(() => config ? new SubsonicController(config) : null, [config]);
+
+  const handleQueueRadio = async (fetchCount: number = 15) => {
+    if (queue.length === 0 || !ctrl || isRadioLoading) return;
+    const lastSong = queue[queue.length - 1];
+    setIsRadioLoading(true);
+    try {
+      const { languageStrictness, radioAlgorithm } = useUIStore.getState();
+
+      if (radioAlgorithm === 'chain') {
+        const originalSeedId = lastSong.id;
+        let currentSeedId = originalSeedId;
+        const currentQueueIds = usePlayerStore.getState().queue.map(s => s.id);
+        const excludeIds = new Set(currentQueueIds);
+        const recentChainIds: string[] = [];
+
+        for (let i = 0; i < fetchCount; i++) {
+          const excludeStr = Array.from(excludeIds).join(',');
+          const recentStr = recentChainIds.slice(-5).join(',');
+          const res = await fetch(`/api/radio/chain-next/${currentSeedId}?original=${originalSeedId}&exclude=${excludeStr}&strictness=${languageStrictness}&recent=${recentStr}`);
+          if (!res.ok) {
+            if (i === 0) alert('Smart Radio not set up. Run the admin enrichment tool first.');
+            break;
+          }
+          const data = await res.json();
+          if (!data.song) break; // no more candidates
+
+          excludeIds.add(data.song.id);
+
+          try {
+            const songRes = await ctrl.getSong(data.song.id);
+            const song = songRes.song;
+            if (song) {
+              usePlayerStore.getState().addToQueue({
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                album: song.album,
+                duration: song.duration,
+                streamUrl: ctrl.getStreamUrl(song.id),
+                coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
+              });
+              currentSeedId = song.id;
+              recentChainIds.push(song.id);
+            }
+          } catch (e) { }
+        }
+      } else {
+        const res = await fetch(`/api/radio/similar/${lastSong.id}?strictness=${languageStrictness}&count=${fetchCount}`);
+        if (!res.ok) {
+          alert('Smart Radio not set up. Run the admin enrichment tool first.');
+          return;
+        }
+        const data = await res.json();
+        const songs = [];
+        for (const item of data.songs) {
+          try {
+            const songRes = await ctrl.getSong(item.id);
+            const song = songRes.song;
+            if (song) {
+              songs.push({
+                id: song.id,
+                title: song.title,
+                artist: song.artist,
+                album: song.album,
+                duration: song.duration,
+                streamUrl: ctrl.getStreamUrl(song.id),
+                coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
+              });
+            }
+          } catch (e) { }
+        }
+        if (songs.length > 0) {
+          addListToQueue(songs);
+        }
+      }
+    } catch (e) {
+      console.error('Radio error:', e);
+    } finally {
+      setIsRadioLoading(false);
+    }
+  };
 
   // Scroll to active song when queue panel is opened or active song changes
   useEffect(() => {
@@ -16,6 +106,17 @@ export const QueuePanel = () => {
       activeItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [currentIndex]);
+
+  // Infinite Radio Effect
+  useEffect(() => {
+    if (infiniteRadio && !isRadioLoading && queue.length > 0) {
+      // Trigger when we are 2 songs away from the end of the queue
+      if (currentIndex >= queue.length - 2 && queue.length !== lastFetchedQueueLength) {
+        setLastFetchedQueueLength(queue.length);
+        handleQueueRadio(5); // Continuous adds 5
+      }
+    }
+  }, [currentIndex, queue.length, infiniteRadio, isRadioLoading, lastFetchedQueueLength]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
@@ -52,7 +153,7 @@ export const QueuePanel = () => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    
+
     if (hrs > 0) {
       return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
@@ -113,9 +214,9 @@ export const QueuePanel = () => {
             const isDragging = draggedIndex === index;
             const isDragOver = dragOverIndex === index;
             let dragBorderClass = '';
-            
+
             if (isDragOver && draggedIndex !== null && draggedIndex !== index) {
-               dragBorderClass = draggedIndex < index ? 'border-b-primary border-b-2' : 'border-t-primary border-t-2';
+              dragBorderClass = draggedIndex < index ? 'border-b-primary border-b-2' : 'border-t-primary border-t-2';
             }
 
             return (
@@ -127,11 +228,10 @@ export const QueuePanel = () => {
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragEnd={handleDragEnd}
                 onDrop={(e) => handleDrop(e, index)}
-                className={`group flex items-center p-2 rounded-xl transition-all cursor-grab active:cursor-grabbing ${
-                  isActive
+                className={`group flex items-center p-2 rounded-xl transition-all cursor-grab active:cursor-grabbing ${isActive
                     ? 'bg-primary/10 border-primary/20 shadow-[0_0_15px_rgba(170,59,255,0.05)]'
                     : 'hover:bg-zinc-900'
-                } ${isDragging ? 'opacity-50' : 'opacity-100'} ${dragBorderClass || 'border border-transparent'}`}
+                  } ${isDragging ? 'opacity-50' : 'opacity-100'} ${dragBorderClass || 'border border-transparent'}`}
               >
                 {/* Drag Handle Icon (visible on hover) */}
                 <div className="w-6 flex-shrink-0 flex items-center justify-center text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -203,6 +303,35 @@ export const QueuePanel = () => {
               </div>
             );
           })
+        )}
+
+        {/* Add Radio Recommended Songs Button */}
+        {queue.length > 0 && (
+          <div className="pt-4 pb-2 flex flex-col items-center gap-3">
+            <button
+              onClick={() => handleQueueRadio(15)}
+              disabled={isRadioLoading}
+              className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${isRadioLoading
+                  ? 'bg-primary/20 text-primary cursor-not-allowed'
+                  : 'bg-primary/10 text-primary hover:bg-primary/20 hover:scale-105 active:scale-95'
+                }`}
+            >
+              {isRadioLoading ? <FiLoader className="animate-spin text-lg" /> : <FiRadio className="text-lg" />}
+              {isRadioLoading ? 'Finding songs...' : 'Auto-add Similar Songs'}
+            </button>
+
+            <button
+              onClick={() => setInfiniteRadio(!infiniteRadio)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-300 ${
+                infiniteRadio 
+                  ? 'bg-primary text-white shadow-[0_0_15px_rgba(170,59,255,0.6)] scale-105' 
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              }`}
+            >
+              <FiRefreshCw className={`text-sm ${infiniteRadio ? 'animate-spin-slow' : ''}`} /> 
+              {infiniteRadio ? 'Infinite Radio On' : 'Infinite Radio Off'}
+            </button>
+          </div>
         )}
       </div>
     </div>

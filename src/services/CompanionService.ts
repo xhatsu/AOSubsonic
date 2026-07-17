@@ -69,7 +69,7 @@ class CompanionService {
       this.ws = null;
       this.playing = false;
       this.connectionCbs.forEach(cb => cb(false));
-      
+
       if (this.shouldReconnect) {
         this.reconnectTimer = setTimeout(() => this.connectInner(), this.reconnectDelay);
       }
@@ -105,12 +105,12 @@ class CompanionService {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
-  private handleMessage(msg: { type: string; [key: string]: unknown }): void {
+  private handleMessage(msg: { type: string;[key: string]: unknown }): void {
     switch (msg.type) {
       case 'hello':
         // Send the current volume immediately upon connection so it doesn't get dropped
         this.setVolume(this.volume);
-        
+
         this.connectionCbs.forEach(cb => cb(true, {
           version: (msg.version as string) || '?',
           mpvVersion: (msg.mpvVersion as string) || '?',
@@ -182,22 +182,22 @@ class CompanionService {
     this.lastDuration = 0;
     // DO NOT set this.playing = true here! Wait for the backend to emit state-change: playing.
     // If we set it true now, getRawPosition() instantly starts advancing time before the track actually starts, causing a visual stutter when the track actually begins and syncs back to 0.
-    this.playing = false; 
+    this.playing = false;
     this.send({ type: 'play', url: streamUrl });
   }
 
-  pause(): void { 
+  pause(): void {
     this.lastCommandTime = performance.now();
     this.playing = false;
     this.stateChangeCbs.forEach(cb => cb('paused'));
-    this.send({ type: 'pause' }); 
+    this.send({ type: 'pause' });
   }
-  
-  resume(): void { 
+
+  resume(): void {
     this.lastCommandTime = performance.now();
     // Same here, let the backend dictate when it actually resumed to prevent time stutter
     this.playing = false;
-    this.send({ type: 'resume' }); 
+    this.send({ type: 'resume' });
   }
 
   stop(): void {

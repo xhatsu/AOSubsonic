@@ -185,6 +185,18 @@ export class DownloaderAPI {
     return data;
   }
 
+  async checkLibraryPresence(songIds: string[]): Promise<string[]> {
+    if (songIds.length === 0) return [];
+    try {
+      const res = await fetch(`/api/radio/check?ids=${songIds.join(',')}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.error('Failed to check library presence:', e);
+      return [];
+    }
+  }
+
   async getStatus(jobId: string): Promise<any> {
     if (!this.baseUrl) throw new Error("Downloader API URL is not configured.");
 

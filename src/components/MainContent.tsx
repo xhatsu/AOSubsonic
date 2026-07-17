@@ -28,7 +28,9 @@ export const MainContent = () => {
     selectedPlaylistId, setSelectedPlaylistId,
     selectedGenre, setSelectedGenre,
     llmProvider, setLlmProvider,
-    llmApiKey, setLlmApiKey
+    llmApiKey, setLlmApiKey,
+    languageStrictness, setLanguageStrictness,
+    radioAlgorithm, setRadioAlgorithm
   } = useUIStore();
 
   const [isAiPlaylistModalOpen, setIsAiPlaylistModalOpen] = useState(false);
@@ -1177,21 +1179,22 @@ export const MainContent = () => {
       {/* Content wrapper */}
       <div className="relative z-10 flex flex-col flex-1 p-8">
       {view === 'settings' ? (
-        <div className="flex-1">
-          <h2 className="text-3xl font-bold text-white mb-8">Settings</h2>
-          <div className="max-w-2xl bg-zinc-800/50 rounded-2xl p-8 border border-zinc-700 space-y-10">
+        <div className="flex-1 flex flex-col items-center pt-4">
+          <div className="w-full max-w-4xl">
+            <h2 className="text-2xl font-bold text-white mb-6">Settings</h2>
+            <div className="bg-zinc-800/50 rounded-2xl p-6 border border-zinc-700 space-y-8">
             {/* Playback Settings */}
-            <div className="bg-zinc-900/30 p-6 rounded-xl border border-zinc-800/50">
+            <div className="bg-zinc-900/30 p-5 rounded-xl border border-zinc-800/50">
               <PlaybackSettings />
             </div>
 
             {/* Theme Settings */}
             <div>
               <h3 className="text-xl font-bold text-white mb-2">Theme Color</h3>
-              <p className="text-zinc-400 text-sm mb-6">
+              <p className="text-zinc-400 text-sm mb-4">
                 Customize the primary accent color of the application.
               </p>
-              <div className="flex items-center space-x-4 bg-zinc-900/50 p-6 rounded-xl">
+              <div className="flex items-center space-x-4 bg-zinc-900/50 p-5 rounded-xl">
                 <input
                   type="color"
                   value={themeColor}
@@ -1209,10 +1212,10 @@ export const MainContent = () => {
             {/* Cache Settings */}
             <div>
               <h3 className="text-xl font-bold text-white mb-2">Image Cache</h3>
-            <p className="text-zinc-400 text-sm mb-6">
+            <p className="text-zinc-400 text-sm mb-4">
               We aggressively cache album covers locally to ensure they load instantly across sessions without hitting the network.
             </p>
-            <div className="flex items-center justify-between bg-zinc-900/50 p-6 rounded-xl">
+            <div className="flex items-center justify-between bg-zinc-900/50 p-5 rounded-xl">
               <div>
                 <span className="text-sm text-zinc-400 block mb-1">Space Used</span>
                 <span className="text-2xl text-white font-bold">{cacheSize.toFixed(2)} MB</span>
@@ -1228,16 +1231,16 @@ export const MainContent = () => {
             {/* AI Provider Settings */}
             <div>
               <h3 className="text-xl font-bold text-white mb-2">AI Provider Settings</h3>
-              <p className="text-zinc-400 text-sm mb-6">
+              <p className="text-zinc-400 text-sm mb-4">
                 Configure the LLM provider for personalized playlist recommendations.
               </p>
-              <div className="bg-zinc-900/50 p-6 rounded-xl space-y-4">
+              <div className="bg-zinc-900/50 p-5 rounded-xl space-y-4">
                 <div className="flex flex-col space-y-2">
                   <label className="text-sm text-zinc-400">Provider</label>
                   <select 
                     value={llmProvider} 
                     onChange={(e) => setLlmProvider(e.target.value as any)}
-                    className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-xs"
+                    className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-md"
                   >
                     <option value="openrouter">OpenRouter</option>
                     <option value="manual">Manual (Copy & Paste Prompt)</option>
@@ -1258,16 +1261,47 @@ export const MainContent = () => {
                     </div>
                   </>
                 )}
+                
+                <div className="flex flex-col space-y-2 pt-4 border-t border-zinc-800">
+                  <label className="text-sm text-zinc-400">Language Match Strictness (Radio)</label>
+                  <select 
+                    value={languageStrictness} 
+                    onChange={(e) => setLanguageStrictness(parseFloat(e.target.value))}
+                    className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-md"
+                  >
+                    <option value={0}>Disabled (Ignore Language)</option>
+                    <option value={0.05}>Soft Prefer (Bonus +0.05)</option>
+                    <option value={0.15}>Strict Prefer (Bonus +0.15)</option>
+                    <option value={0.30}>Extremely Strict (Bonus +0.30)</option>
+                  </select>
+                  <p className="text-xs text-zinc-500">Adds a score bonus to songs with the same language when generating track radio.</p>
+                </div>
+
+                <div className="flex flex-col space-y-2 pt-4 border-t border-zinc-800">
+                  <label className="text-sm text-zinc-400">Radio Algorithm</label>
+                  <select 
+                    value={radioAlgorithm} 
+                    onChange={(e) => setRadioAlgorithm(e.target.value as 'star' | 'chain')}
+                    className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-md"
+                  >
+                    <option value="chain">Chain (Regression Walk) - Recommended</option>
+                    <option value="star">Star (Seed-focused)</option>
+                  </select>
+                  <p className="text-xs text-zinc-500">
+                    <strong>Chain:</strong> Smoothly transitions across genres, allowing the vibe to slowly drift.<br/>
+                    <strong>Star:</strong> Keeps all recommended songs heavily tethered to the original seed song.
+                  </p>
+                </div>
               </div>
             </div>
 
             {/* Listening History Settings */}
             <div>
               <h3 className="text-xl font-bold text-white mb-2">Listening History</h3>
-              <p className="text-zinc-400 text-sm mb-6">
+              <p className="text-zinc-400 text-sm mb-4">
                 Your play history is tracked locally to power AI recommendations and stats.
               </p>
-              <div className="flex items-center justify-between bg-zinc-900/50 p-6 rounded-xl">
+              <div className="flex items-center justify-between bg-zinc-900/50 p-5 rounded-xl">
                 <div>
                   <span className="text-sm text-zinc-400 block mb-1">Space Used</span>
                   <span className="text-2xl text-white font-bold">{historySize.toFixed(2)} KB</span>
@@ -1285,6 +1319,7 @@ export const MainContent = () => {
                 </button>
               </div>
             </div>
+          </div>
           </div>
         </div>
       ) : (

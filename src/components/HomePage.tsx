@@ -3,16 +3,16 @@ import { useAuthStore } from '../store/auth.store';
 import { useUIStore } from '../store/ui.store';
 import { useHistoryStore } from '../store/history.store';
 import { usePlayerStore, type QueueSong } from '../store/player.store';
-import { 
-  useGetFrequentAlbums, 
-  useGetRecentAlbums, 
-  useGetAlbumsByYear, 
+import {
+  useGetFrequentAlbums,
+  useGetRecentAlbums,
+  useGetAlbumsByYear,
   useGetStarred2,
   useGetRandomSongsQuery
 } from '../api/hooks';
 import { SubsonicController } from '../api/subsonic';
 import { CachedImage } from './CachedImage';
-import { FiPlay, FiActivity, FiRefreshCw, FiSliders, FiShuffle } from 'react-icons/fi';
+import { FiPlay, FiActivity, FiRefreshCw, FiSliders, FiShuffle, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { MoodTrackList } from './MoodTrackList';
 import { useHorizontalScroll } from '../hooks/useHorizontalScroll';
 import { Vibrant } from 'node-vibrant/browser';
@@ -39,27 +39,99 @@ const ScrollRow = ({ title, children, onRefresh }: { title: string, children: Re
   );
 };
 
+const AXES_CONFIG = {
+  'Vibe & Emotion': ['dark', 'melancholic', 'bright', 'euphoric', 'ambient', 'calm', 'energetic', 'explosive'],
+  'Sonic Texture': ['electronic', 'acoustic', 'hybrid-electronic', 'hybrid-acoustic', 'clean', 'gritty', 'heavy', 'crushing'],
+  'Vocals & Speed': ['slow', 'fast', 'swaying', 'groovy', 'bouncy', 'instrumental', 'vocal-heavy', 'melodic', 'rap'],
+  'Production & Environment': ['lo-fi', 'raw', 'pristine', 'solitary', 'intimate', 'social', 'anthemic']
+};
+
+const TRANSLATIONS: Record<string, string> = {
+  // Categories
+  'Vibe & Emotion': 'Cảm xúc & Không khí',
+  'Sonic Texture': 'Chất âm & Cấu trúc',
+  'Vocals & Speed': 'Giọng ca & Tốc độ',
+  'Production & Environment': 'Production & Không gian',
+  // Keywords
+  'dark': 'U tối',
+  'melancholic': 'U sầu',
+  'bright': 'Tươi sáng',
+  'euphoric': 'Hưng phấn',
+  'ambient': 'Ambient',
+  'calm': 'Êm dịu',
+  'energetic': 'Sôi động',
+  'explosive': 'Bùng nổ',
+  'electronic': 'Electronic',
+  'acoustic': 'Acoustic',
+  'hybrid-electronic': 'Hybrid-Electronic',
+  'hybrid-acoustic': 'Hybrid-Acoustic',
+  'clean': 'Clean',
+  'gritty': 'Gritty',
+  'heavy': 'Heavy',
+  'crushing': 'Crushing',
+  'slow': 'Chậm',
+  'fast': 'Nhanh',
+  'swaying': 'Đu đưa',
+  'groovy': 'Groovy',
+  'bouncy': 'Nhịp nhàng',
+  'instrumental': 'Instrumental',
+  'vocal-heavy': 'Vocal-Heavy',
+  'melodic': 'Melodic',
+  'rap': 'Rap',
+  'lo-fi': 'Lo-fi',
+  'raw': 'Raw',
+  'pristine': 'Pristine',
+  'solitary': 'Cô độc',
+  'intimate': 'Thân mật',
+  'social': 'Náo nhiệt',
+  'anthemic': 'Anthemic'
+};
+
 export const HomePage = () => {
   const config = useAuthStore(state => state.config);
   const ctrl = useMemo(() => config ? new SubsonicController(config) : null, [config]);
   const { setView, setSelectedAlbumId, setSelectedAlbumCover, llmApiKey } = useUIStore();
   const history = useHistoryStore();
+  const [showManualVibe, setShowManualVibe] = useState(false);
   const { setQueue, play } = usePlayerStore();
-  
+
 
   const yearBtnScrollRef = useHorizontalScroll<HTMLDivElement>();
   const yearAlbumsScrollRef = useHorizontalScroll<HTMLDivElement>();
 
-  // For You Sliders State
-  const [sliders, setSliders] = useState({
-    tempo: 0.5, vocal: 0.5, mood: 0.5, acousticness: 0.5, distortion: 0.5, setting: 0.5
-  });
+  // Server Status
+  const [isServerReady, setIsServerReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('/api/radio/status');
+        if (res.ok) {
+          const data = await res.json();
+          setIsServerReady(data.ready);
+          if (data.ready && interval) {
+            clearInterval(interval);
+          }
+        }
+      } catch (e) {
+        setIsServerReady(false);
+      }
+    };
+
+    checkStatus();
+    interval = setInterval(checkStatus, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // For You Axes State
+  const [selectedAxes, setSelectedAxes] = useState<string[]>([]);
   const { homeForYouData: forYouData, setHomeForYouData } = useUIStore();
-  
+
   const setForYouData = (updater: any) => {
     setHomeForYouData(typeof updater === 'function' ? updater(forYouData) : updater);
   };
-  
+
   const [isFetchingForYou, setIsFetchingForYou] = useState(false);
   const [magicPrompt, setMagicPrompt] = useState("");
   const [isMagicTuning, setIsMagicTuning] = useState(false);
@@ -73,7 +145,7 @@ export const HomePage = () => {
   const { data: recentData } = useGetRecentAlbums(15);
   const { data: starredData } = useGetStarred2();
   const { data: randomSongsData } = useGetRandomSongsQuery(10);
-  
+
   const topAlbums = frequentData?.albumList?.album?.slice(0, 5) || recentData?.albumList?.album?.slice(0, 5) || [];
   const topAlbum = topAlbums[spotlightIndex] || topAlbums[0];
 
@@ -88,7 +160,7 @@ export const HomePage = () => {
     if (topAlbum?.coverArt && ctrl) {
       const cacheKey = `spotlight_color_${topAlbum.coverArt}`;
       const cachedColor = localStorage.getItem(cacheKey);
-      
+
       // Instantly load cached color if available to prevent UI pop-in
       if (cachedColor) {
         setSpotlightColor(cachedColor);
@@ -106,8 +178,8 @@ export const HomePage = () => {
             swatches.sort((a, b) => b!.population - a!.population);
             const hex = swatches[0]!.hex;
             if (hex !== cachedColor) {
-                setSpotlightColor(hex);
-                localStorage.setItem(cacheKey, hex);
+              setSpotlightColor(hex);
+              localStorage.setItem(cacheKey, hex);
             }
           } else if (!cachedColor) {
             setSpotlightColor(null);
@@ -150,7 +222,7 @@ export const HomePage = () => {
 
   useEffect(() => {
     if (forYouData) return;
-    
+
     if (frequentData?.albumList?.album) {
       fetchAutoSections(frequentData.albumList.album);
     } else {
@@ -158,54 +230,39 @@ export const HomePage = () => {
     }
   }, [frequentData]);
 
-  const handleSliderChange = (axis: string, val: number) => {
-    const newSliders = { ...sliders, [axis]: val };
-    setSliders(newSliders);
+  const togglePill = (val: string) => {
+    setSelectedAxes(prev => {
+      if (prev.includes(val)) {
+        return prev.filter(x => x !== val);
+      } else {
+        return [...prev, val];
+      }
+    });
   };
 
-  const applySliders = async () => {
+  const handleSearch = async () => {
     const { llmApiKey } = useUIStore.getState();
     if (!llmApiKey) {
       alert("Please set your OpenRouter API key in AI Settings first to use custom tuning!");
       return;
     }
-    
+
     setIsFetchingForYou(true);
     try {
-      const parts = [];
-      if (sliders.tempo > 0.7) parts.push("fast tempo, high energy");
-      else if (sliders.tempo < 0.3) parts.push("slow tempo, relaxed pace");
-      else parts.push("moderate tempo");
-
-      if (sliders.vocal > 0.7) parts.push("layered vocals, vocal-heavy");
-      else if (sliders.vocal < 0.3) parts.push("instrumental, no vocals");
-      else parts.push("balanced vocals");
-
-      if (sliders.mood > 0.7) parts.push("bright, uplifting, cheerful");
-      else if (sliders.mood < 0.3) parts.push("dark, melancholic, brooding");
-      else parts.push("neutral mood");
-
-      if (sliders.acousticness > 0.7) parts.push("organic, acoustic instruments");
-      else if (sliders.acousticness < 0.3) parts.push("electronic, synth-heavy, digital");
-      else parts.push("mixed acoustic and electronic");
-
-      if (sliders.distortion > 0.7) parts.push("raw, distorted, heavy");
-      else if (sliders.distortion < 0.3) parts.push("clean production, polished");
-      else parts.push("moderate grit");
-
-      if (sliders.setting > 0.7) parts.push("social, party, upbeat crowd");
-      else if (sliders.setting < 0.3) parts.push("introspective, solo listening");
-      else parts.push("versatile setting");
-
-      const promptStr = parts.join(", ");
+      const parts = selectedAxes;
+      if (parts.length === 0) {
+        setIsFetchingForYou(false);
+        return;
+      }
+      const promptStr = parts.join(" ");
       const vector = await LLMService.generateEmbedding(promptStr, llmApiKey);
-      
+
       const res = await fetch('/api/radio/prompt?count=30', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vector })
       });
-      
+
       if (res.ok) {
         const data = await res.json();
         const newSliderSection = {
@@ -214,7 +271,7 @@ export const HomePage = () => {
           description: `Vibe: ${promptStr}`,
           songs: data.songs
         };
-        
+
         setForYouData((prev: any[]) => {
           const oldAutoSections = prev ? prev.filter((s: any) => s.type === 'auto') : [];
           return [newSliderSection, ...oldAutoSections].filter(Boolean);
@@ -222,7 +279,7 @@ export const HomePage = () => {
       }
     } catch (e) {
       console.error(e);
-      alert("Failed to apply sliders. Check console.");
+      alert("Failed to apply tags. Check console.");
     } finally {
       setIsFetchingForYou(false);
     }
@@ -238,25 +295,25 @@ export const HomePage = () => {
         setIsMagicTuning(false);
         return;
       }
-      
+
       const vector = await LLMService.generateEmbedding(magicPrompt, llmApiKey);
-      
+
       const res = await fetch('/api/radio/prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vector })
       });
-      
+
       if (!res.ok) throw new Error("Failed to get prompt radio");
       const data = await res.json();
-      
+
       const newSection = {
         type: 'slider',
         title: "Magic Vibe",
         description: `Based on: "${magicPrompt}"`,
         songs: data.songs
       };
-      
+
       setForYouData((prev: any[]) => {
         if (!prev) return [newSection];
         const oldAutoSections = prev.filter((s: any) => s.type === 'auto');
@@ -306,10 +363,20 @@ export const HomePage = () => {
 
 
   return (
-    <div className="flex-1 overflow-y-auto h-full p-6 pb-32 scrollbar-thin">
-      
+    <div className="flex-1 overflow-y-auto h-full p-6 pb-32 scrollbar-thin relative">
+
+      {/* Server Status Marker */}
+      {isServerReady !== null && (
+        <div className="absolute top-6 right-6 z-50 flex items-center gap-2 bg-black/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-lg">
+          <div className={`w-2 h-2 rounded-full ${isServerReady ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-amber-500 animate-pulse shadow-[0_0_8px_#f59e0b]'}`} />
+          <span className="text-xs font-semibold text-white/90 tracking-wide">
+            {isServerReady ? 'Engine Ready' : 'Syncing Vectors...'}
+          </span>
+        </div>
+      )}
+
       {/* Spotlight Banner */}
-      <div 
+      <div
         className={`mb-12 mt-2 relative w-full h-[300px] md:h-[400px] rounded-3xl overflow-hidden shadow-2xl flex ${!spotlightColor ? 'bg-primary' : ''}`}
         style={spotlightColor ? { backgroundColor: spotlightColor } : undefined}
       >
@@ -319,7 +386,7 @@ export const HomePage = () => {
               <span className="text-2xl font-bold">Welcome to AOSubsonic</span>
             </div>
           );
-          
+
           return (
             <>
               {/* Left Content */}
@@ -336,7 +403,7 @@ export const HomePage = () => {
                     {topAlbum.artist}
                   </p>
                   <div>
-                    <button 
+                    <button
                       onClick={() => handleOpenAlbum(topAlbum.id, topAlbum.coverArt)}
                       className="bg-white text-black hover:bg-zinc-200 font-bold px-8 py-3.5 rounded-full transition-transform hover:scale-105 active:scale-95 shadow-lg flex items-center"
                     >
@@ -345,16 +412,16 @@ export const HomePage = () => {
                   </div>
                 </div>
               </div>
-              
+
               {/* Right Image */}
               <div className="absolute top-0 right-0 w-full h-full md:w-2/3 z-0">
                 {topAlbum.coverArt && ctrl && (
-                   <CachedImage id={topAlbum.coverArt} url={ctrl.getCoverArtUrl(topAlbum.coverArt)} alt={topAlbum.title} className="w-full h-full object-cover object-center md:object-right" />
+                  <CachedImage id={topAlbum.coverArt} url={ctrl.getCoverArtUrl(topAlbum.coverArt)} alt={topAlbum.title} className="w-full h-full object-cover object-center md:object-right" />
                 )}
                 {/* Gradient to blend image into the solid background on large screens */}
                 {spotlightColor ? (
-                  <div 
-                    className="hidden md:block absolute inset-0" 
+                  <div
+                    className="hidden md:block absolute inset-0"
                     style={{ backgroundImage: `linear-gradient(to right, ${spotlightColor} 0%, ${spotlightColor}00 70%, ${spotlightColor}00 100%)` }}
                   ></div>
                 ) : (
@@ -389,14 +456,15 @@ export const HomePage = () => {
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
               <FiSliders className="text-primary" /> Tune Your Vibe
             </h2>
-            <button 
-              onClick={applySliders}
-              className="flex items-center gap-2 bg-white text-black hover:bg-zinc-200 px-6 py-2 rounded-full font-bold transition-colors text-sm shadow-lg"
+            <button
+              onClick={handleSearch}
+              disabled={selectedAxes.length === 0 && !magicPrompt}
+              className="flex items-center gap-2 bg-white text-black hover:bg-zinc-200 px-6 py-2 rounded-full font-bold transition-colors text-sm shadow-lg disabled:opacity-50"
             >
-              <FiShuffle className="hidden" /> Apply
+              <FiShuffle className="hidden" /> Search
             </button>
           </div>
-          
+
           {llmApiKey && (
             <div className="mb-6 relative flex items-center">
               <input
@@ -405,44 +473,57 @@ export const HomePage = () => {
                 value={magicPrompt}
                 onChange={(e) => setMagicPrompt(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleMagicTune()}
-                className="w-full bg-white/10 text-white placeholder-zinc-400 px-6 py-3 rounded-full outline-none focus:ring-2 focus:ring-white/50 border border-white/10 transition-all"
+                className="w-full bg-white/10 text-white placeholder-zinc-400 px-6 py-3 rounded-full outline-none focus:ring-2 focus:ring-white/50 border border-white/10 transition-all pr-24"
                 disabled={isMagicTuning}
               />
-              <button 
+              <button
                 onClick={handleMagicTune}
-                disabled={isMagicTuning}
+                disabled={isMagicTuning || !magicPrompt}
                 className="absolute right-2 top-1/2 -translate-y-1/2 bg-white hover:bg-zinc-200 text-black px-4 py-1.5 rounded-full font-bold text-sm shadow-md transition-all disabled:opacity-50"
               >
-                {isMagicTuning ? "Tuning..." : "Magic"}
+                {isMagicTuning ? "..." : "Magic"}
               </button>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-            {[
-              { axis: 'tempo', left: 'Slow', right: 'Fast' },
-              { axis: 'vocal', left: 'Instrumental', right: 'Layered' },
-              { axis: 'mood', left: 'Dark', right: 'Bright' },
-              { axis: 'acousticness', left: 'Synth', right: 'Organic' },
-              { axis: 'distortion', left: 'Clean', right: 'Raw' },
-              { axis: 'setting', left: 'Solo', right: 'Social' }
-            ].map(slider => (
-              <div key={slider.axis} className="flex flex-col space-y-2">
-                <div className="flex justify-between text-xs font-medium text-zinc-400">
-                  <span className={sliders[slider.axis as keyof typeof sliders] < 0.3 ? 'text-white' : ''}>{slider.left}</span>
-                  <span className="capitalize text-zinc-500">{slider.axis}</span>
-                  <span className={sliders[slider.axis as keyof typeof sliders] > 0.7 ? 'text-white' : ''}>{slider.right}</span>
-                </div>
-                <input 
-                  type="range" 
-                  min="0" max="1" step="0.05"
-                  value={sliders[slider.axis as keyof typeof sliders]}
-                  onChange={(e) => handleSliderChange(slider.axis, parseFloat(e.target.value))}
-                  className="w-full h-2 rounded-lg appearance-none bg-zinc-800 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
-                />
-              </div>
-            ))}
+          <div className="flex justify-center mb-6">
+            <button
+              onClick={() => setShowManualVibe(!showManualVibe)}
+              className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors text-sm font-medium"
+            >
+              {showManualVibe ? <FiChevronUp /> : <FiChevronDown />}
+              {showManualVibe ? 'Hide Advanced Options' : 'Show Advanced Options (Manual Tuning)'}
+            </button>
           </div>
+
+          {showManualVibe && (
+            <div className="flex flex-col gap-4">
+              {Object.entries(AXES_CONFIG).map(([axisName, keywords]) => (
+                <div key={axisName} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span className="text-xs font-semibold text-zinc-500 uppercase tracking-widest sm:w-60 flex-shrink-0 whitespace-nowrap">
+                    {TRANSLATIONS[axisName] || axisName}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {keywords.map(kw => {
+                      const isSelected = selectedAxes.includes(kw);
+                      return (
+                        <button
+                          key={kw}
+                          onClick={() => togglePill(kw)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${isSelected
+                            ? 'bg-white text-black border-white shadow-[0_0_10px_rgba(255,255,255,0.3)]'
+                            : 'bg-zinc-800/50 text-zinc-300 border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800'
+                            }`}
+                        >
+                          {TRANSLATIONS[kw] || kw}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {isFetchingForYou && !forYouData && (
@@ -455,12 +536,12 @@ export const HomePage = () => {
         {forYouData && forYouData.map((section: any, idx: number) => {
           if (!section.songs || section.songs.length === 0) return null;
           return (
-            <MoodTrackList 
+            <MoodTrackList
               key={`fy-${idx}`}
               title={section.title}
               description={section.description}
-              songIds={section.songs.map((s:any) => s.id)}
-              onPlayAll={() => playSongList(section.songs.map((s:any) => s.id))}
+              songIds={section.songs.map((s: any) => s.id)}
+              onPlayAll={() => playSongList(section.songs.map((s: any) => s.id))}
               layout="row"
             />
           );
@@ -549,11 +630,11 @@ export const HomePage = () => {
               </div>
               <div className="w-12 h-12 bg-zinc-800 rounded shadow overflow-hidden flex-shrink-0 mr-4 relative">
                 {song.coverArt && (
-                  <CachedImage 
-                    id={song.coverArt} 
-                    url={song.coverArt.startsWith('http') ? song.coverArt : (ctrl ? ctrl.getCoverArtUrl(song.coverArt) : '')} 
-                    alt={song.title} 
-                    className="w-full h-full object-cover" 
+                  <CachedImage
+                    id={song.coverArt}
+                    url={song.coverArt.startsWith('http') ? song.coverArt : (ctrl ? ctrl.getCoverArtUrl(song.coverArt) : '')}
+                    alt={song.title}
+                    className="w-full h-full object-cover"
                   />
                 )}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -570,7 +651,7 @@ export const HomePage = () => {
             </div>
           ))}
           {history.getTopSongs(10).length === 0 && (
-             <div className="text-zinc-500 py-4 px-2">Play some songs to see your history here!</div>
+            <div className="text-zinc-500 py-4 px-2">Play some songs to see your history here!</div>
           )}
         </div>
       </div>
@@ -582,8 +663,8 @@ export const HomePage = () => {
         </h2>
         <div ref={yearBtnScrollRef} className="flex space-x-2 overflow-x-auto scrollbar-thin pb-4 px-2 mb-4 snap-x">
           {years.map(y => (
-            <button 
-              key={y} 
+            <button
+              key={y}
               onClick={() => setSelectedYear(y)}
               className={`px-5 py-2 rounded-full font-bold text-sm whitespace-nowrap transition-colors snap-start ${selectedYear === y ? 'bg-white text-black' : 'bg-zinc-800 text-white hover:bg-zinc-700'}`}
             >
@@ -602,7 +683,7 @@ export const HomePage = () => {
             </div>
           ))}
           {(!yearAlbumsData?.albumList2?.album || yearAlbumsData.albumList2.album.length === 0) && (
-             <div className="text-zinc-500 py-8 px-2">No albums found for {selectedYear}</div>
+            <div className="text-zinc-500 py-8 px-2">No albums found for {selectedYear}</div>
           )}
         </div>
       </div>
@@ -619,7 +700,7 @@ export const HomePage = () => {
           </div>
         ))}
         {(!starredData?.starred2?.album || starredData.starred2.album.length === 0) && (
-           <div className="text-zinc-500 py-8 px-2 w-full">You haven't starred any albums yet.</div>
+          <div className="text-zinc-500 py-8 px-2 w-full">You haven't starred any albums yet.</div>
         )}
       </ScrollRow>
 
