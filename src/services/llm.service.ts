@@ -49,11 +49,11 @@ export class LLMService {
     context += `\n`;
 
     const allSongs = new Map();
-    const maxSongs = 800;
+    const maxSongs = 2000; // Increased to cover the user's 1500 song library
 
     const fetchAlbumsToSongs = async (albumList: any[]) => {
-      for (let i = 0; i < albumList.length; i += 10) {
-        const chunk = albumList.slice(i, i + 10);
+      for (let i = 0; i < albumList.length; i += 20) {
+        const chunk = albumList.slice(i, i + 20);
         const results = await Promise.all(
           chunk.map((a: any) => ctrl.getAlbum(a.id).catch(() => null))
         );
@@ -73,26 +73,22 @@ export class LLMService {
     };
 
     try {
-      const data = await ctrl.getAlbumList('frequent', 100, 0);
-      let albumList = data.albumList?.album || [];
-      if (!Array.isArray(albumList)) albumList = [albumList];
-      await fetchAlbumsToSongs(albumList);
-    } catch (e) {
-      console.error(e);
-    }
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore && allSongs.size < maxSongs) {
+        const data = await ctrl.getAlbumList('newest', 200, offset);
+        let albumList = data.albumList?.album || [];
+        if (!Array.isArray(albumList)) albumList = [albumList];
 
-    if (allSongs.size < maxSongs) {
-      try {
-        const randomData = await ctrl.getRandomSongs(maxSongs - allSongs.size);
-        let randomSongs = randomData.randomSongs?.song || [];
-        if (!Array.isArray(randomSongs)) randomSongs = [randomSongs];
-        for (const s of randomSongs) {
-          allSongs.set(s.id, s);
-          if (allSongs.size >= maxSongs) break;
+        if (albumList.length === 0) {
+          hasMore = false;
+        } else {
+          await fetchAlbumsToSongs(albumList);
+          offset += albumList.length;
         }
-      } catch (e) {
-        console.error(e);
       }
+    } catch (e) {
+      console.error("Error fetching library context for LLM:", e);
     }
 
     context += `## Full Library (${allSongs.size} songs provided for context)\n`;
@@ -138,7 +134,7 @@ export class LLMService {
 Using ONLY songs from the library below, create personalized playlist recommendations for this listener. You must return:`;
 
     if (customRequirement && customRequirement.trim().length > 0) {
-        prompt += `\n\n### 🔴 CRITICAL USER INSTRUCTION 🔴\nThe user has specifically requested the following theme/vibe/rule for this generation:\n"${customRequirement}"\nYou MUST strictly prioritize this request when generating the playlists and moods.`;
+      prompt += `\n\n### 🔴 CRITICAL USER INSTRUCTION 🔴\nThe user has specifically requested the following theme/vibe/rule for this generation:\n"${customRequirement}"\nYou MUST strictly prioritize this request when generating the playlists and moods.`;
     }
 
     prompt += `\n\n1. **5-8 Themed Playlists** — Each playlist should be 15-30 songs.
@@ -198,6 +194,33 @@ Return ONLY valid JSON, no markdown formatting (\`\`\`json etc), no explanations
   }
 }`;
     return prompt;
+  }
+
+  static async generateEmbedding(prompt: string, apiKey: string): Promise<number[]> {
+    const url = 'https://openrouter.ai/api/v1/embeddings';
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "google/gemini-embedding-2", // MUST match the model used in radio-admin/app.py
+        input: prompt
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch embedding from OpenRouter API: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const vector = data.data?.[0]?.embedding;
+
+    if (!vector || !Array.isArray(vector)) throw new Error('Invalid response from OpenRouter Embeddings');
+
+    return vector;
   }
 
   static async fetchOpenRouter(apiKey: string, model: string, prompt: string): Promise<LLMResponse> {

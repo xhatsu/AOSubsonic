@@ -12,12 +12,11 @@ import {
 } from '../api/hooks';
 import { SubsonicController } from '../api/subsonic';
 import { CachedImage } from './CachedImage';
-import { FiPlay, FiActivity, FiCpu, FiCopy, FiCheck } from 'react-icons/fi';
-import { LLMService, type LLMResponse } from '../services/llm.service';
+import { FiPlay, FiActivity, FiRefreshCw, FiSliders, FiShuffle } from 'react-icons/fi';
 import { MoodTrackList } from './MoodTrackList';
-import { AIPlaylistCard } from './AIPlaylistCard';
 import { useHorizontalScroll } from '../hooks/useHorizontalScroll';
 import { Vibrant } from 'node-vibrant/browser';
+import { LLMService } from '../services/llm.service';
 
 const ScrollRow = ({ title, children, onRefresh }: { title: string, children: React.ReactNode, onRefresh?: () => void }) => {
   const scrollRef = useHorizontalScroll<HTMLDivElement>();
@@ -43,22 +42,27 @@ const ScrollRow = ({ title, children, onRefresh }: { title: string, children: Re
 export const HomePage = () => {
   const config = useAuthStore(state => state.config);
   const ctrl = useMemo(() => config ? new SubsonicController(config) : null, [config]);
-  const { setView, setSelectedAlbumId, setSelectedAlbumCover, llmProvider, llmApiKey, llmModelName } = useUIStore();
+  const { setView, setSelectedAlbumId, setSelectedAlbumCover, llmApiKey } = useUIStore();
   const history = useHistoryStore();
   const { setQueue, play } = usePlayerStore();
   
-  const aiScrollRef = useHorizontalScroll<HTMLDivElement>();
+
   const yearBtnScrollRef = useHorizontalScroll<HTMLDivElement>();
   const yearAlbumsScrollRef = useHorizontalScroll<HTMLDivElement>();
 
-  // LLM State
-  const [llmResponse, setLlmResponse] = useState<LLMResponse | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [manualPrompt, setManualPrompt] = useState('');
-  const [manualResponse, setManualResponse] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [showManualInput, setShowManualInput] = useState(false);
-  const [aiPromptInstruction, setAiPromptInstruction] = useState('');
+  // For You Sliders State
+  const [sliders, setSliders] = useState({
+    tempo: 0.5, vocal: 0.5, mood: 0.5, acousticness: 0.5, distortion: 0.5, setting: 0.5
+  });
+  const { homeForYouData: forYouData, setHomeForYouData } = useUIStore();
+  
+  const setForYouData = (updater: any) => {
+    setHomeForYouData(typeof updater === 'function' ? updater(forYouData) : updater);
+  };
+  
+  const [isFetchingForYou, setIsFetchingForYou] = useState(false);
+  const [magicPrompt, setMagicPrompt] = useState("");
+  const [isMagicTuning, setIsMagicTuning] = useState(false);
 
   // Spotlight State
   const [spotlightColor, setSpotlightColor] = useState<string | null>(null);
@@ -73,12 +77,11 @@ export const HomePage = () => {
   const topAlbums = frequentData?.albumList?.album?.slice(0, 5) || recentData?.albumList?.album?.slice(0, 5) || [];
   const topAlbum = topAlbums[spotlightIndex] || topAlbums[0];
 
+  // Set a random initial spotlight index when data loads
   useEffect(() => {
-    if (topAlbums.length === 0) return;
-    const interval = setInterval(() => {
-      setSpotlightIndex((prev) => (prev + 1) % topAlbums.length);
-    }, 6000);
-    return () => clearInterval(interval);
+    if (topAlbums.length > 0 && spotlightIndex === 0) {
+      setSpotlightIndex(Math.floor(Math.random() * topAlbums.length));
+    }
   }, [topAlbums.length]);
 
   useEffect(() => {
@@ -89,6 +92,7 @@ export const HomePage = () => {
       // Instantly load cached color if available to prevent UI pop-in
       if (cachedColor) {
         setSpotlightColor(cachedColor);
+        return; // Don't run expensive Vibrant extraction again if we already have it
       }
 
       const img = new Image();
@@ -121,16 +125,150 @@ export const HomePage = () => {
   const { data: yearAlbumsData } = useGetAlbumsByYear(selectedYear, selectedYear, 20);
   const years = Array.from({ length: 30 }, (_, i) => currentYear - i);
 
-  useEffect(() => {
-    const cached = localStorage.getItem('aosubsonic-llm-cache');
-    if (cached) {
-      try {
-        setLlmResponse(JSON.parse(cached));
-      } catch (e) {
-        console.error('Failed to parse cached LLM response', e);
+  const fetchAutoSections = async (frequentAlbums?: any[]) => {
+    setIsFetchingForYou(true);
+    try {
+      const q = new URLSearchParams();
+      if (frequentAlbums && frequentAlbums.length > 0) {
+        const albumTitles = frequentAlbums.map((a: any) => a.title || a.name).join('|||');
+        q.append('frequentAlbums', albumTitles);
       }
+      const res = await fetch('/api/radio/foryou?' + q.toString());
+      if (res.ok) {
+        const data = await res.json();
+        setForYouData((prev: any[]) => {
+          const oldSliderSection = prev ? prev.find((s: any) => s.type === 'slider') : null;
+          return [oldSliderSection, ...data.sections].filter(Boolean);
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsFetchingForYou(false);
     }
-  }, []);
+  };
+
+  useEffect(() => {
+    if (forYouData) return;
+    
+    if (frequentData?.albumList?.album) {
+      fetchAutoSections(frequentData.albumList.album);
+    } else {
+      fetchAutoSections([]);
+    }
+  }, [frequentData]);
+
+  const handleSliderChange = (axis: string, val: number) => {
+    const newSliders = { ...sliders, [axis]: val };
+    setSliders(newSliders);
+  };
+
+  const applySliders = async () => {
+    const { llmApiKey } = useUIStore.getState();
+    if (!llmApiKey) {
+      alert("Please set your OpenRouter API key in AI Settings first to use custom tuning!");
+      return;
+    }
+    
+    setIsFetchingForYou(true);
+    try {
+      const parts = [];
+      if (sliders.tempo > 0.7) parts.push("fast tempo, high energy");
+      else if (sliders.tempo < 0.3) parts.push("slow tempo, relaxed pace");
+      else parts.push("moderate tempo");
+
+      if (sliders.vocal > 0.7) parts.push("layered vocals, vocal-heavy");
+      else if (sliders.vocal < 0.3) parts.push("instrumental, no vocals");
+      else parts.push("balanced vocals");
+
+      if (sliders.mood > 0.7) parts.push("bright, uplifting, cheerful");
+      else if (sliders.mood < 0.3) parts.push("dark, melancholic, brooding");
+      else parts.push("neutral mood");
+
+      if (sliders.acousticness > 0.7) parts.push("organic, acoustic instruments");
+      else if (sliders.acousticness < 0.3) parts.push("electronic, synth-heavy, digital");
+      else parts.push("mixed acoustic and electronic");
+
+      if (sliders.distortion > 0.7) parts.push("raw, distorted, heavy");
+      else if (sliders.distortion < 0.3) parts.push("clean production, polished");
+      else parts.push("moderate grit");
+
+      if (sliders.setting > 0.7) parts.push("social, party, upbeat crowd");
+      else if (sliders.setting < 0.3) parts.push("introspective, solo listening");
+      else parts.push("versatile setting");
+
+      const promptStr = parts.join(", ");
+      const vector = await LLMService.generateEmbedding(promptStr, llmApiKey);
+      
+      const res = await fetch('/api/radio/prompt?count=30', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vector })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        const newSliderSection = {
+          type: 'slider',
+          title: "Custom Tuned Mix",
+          description: `Vibe: ${promptStr}`,
+          songs: data.songs
+        };
+        
+        setForYouData((prev: any[]) => {
+          const oldAutoSections = prev ? prev.filter((s: any) => s.type === 'auto') : [];
+          return [newSliderSection, ...oldAutoSections].filter(Boolean);
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to apply sliders. Check console.");
+    } finally {
+      setIsFetchingForYou(false);
+    }
+  };
+
+  const handleMagicTune = async () => {
+    if (!magicPrompt.trim()) return;
+    setIsMagicTuning(true);
+    try {
+      const { llmApiKey } = useUIStore.getState();
+      if (!llmApiKey) {
+        alert("Please set your OpenRouter API key in AI Settings first!");
+        setIsMagicTuning(false);
+        return;
+      }
+      
+      const vector = await LLMService.generateEmbedding(magicPrompt, llmApiKey);
+      
+      const res = await fetch('/api/radio/prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vector })
+      });
+      
+      if (!res.ok) throw new Error("Failed to get prompt radio");
+      const data = await res.json();
+      
+      const newSection = {
+        type: 'slider',
+        title: "Magic Vibe",
+        description: `Based on: "${magicPrompt}"`,
+        songs: data.songs
+      };
+      
+      setForYouData((prev: any[]) => {
+        if (!prev) return [newSection];
+        const oldAutoSections = prev.filter((s: any) => s.type === 'auto');
+        return [newSection, ...oldAutoSections].filter(Boolean);
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Magic Tune failed. Check console for details.");
+    } finally {
+      setIsMagicTuning(false);
+    }
+  };
 
   const handleOpenAlbum = (id: string, coverArt: string) => {
     setSelectedAlbumId(id);
@@ -164,52 +302,6 @@ export const HomePage = () => {
       setQueue(songs, 0);
       play();
     }
-  };
-
-  const handleGenerateLLM = async () => {
-    if (!ctrl) return;
-    setIsGenerating(true);
-    try {
-      const prompt = await LLMService.generatePromptContext(ctrl);
-      
-      if (llmProvider === 'manual' || !llmApiKey) {
-        setManualPrompt(prompt + "\\n\\n" + LLMService.getSystemPrompt(aiPromptInstruction));
-        setShowManualInput(true);
-        setIsGenerating(false);
-        return;
-      }
-
-      const fullPrompt = prompt + "\\n\\n" + LLMService.getSystemPrompt(aiPromptInstruction);
-      let response: LLMResponse;
-      
-      response = await LLMService.fetchOpenRouter(llmApiKey, llmModelName, fullPrompt);
-      
-      setLlmResponse(response);
-      localStorage.setItem('aosubsonic-llm-cache', JSON.stringify(response));
-    } catch (e) {
-      console.error(e);
-      alert("Failed to generate AI recommendations.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleManualSubmit = () => {
-    try {
-      const parsed = JSON.parse(manualResponse) as LLMResponse;
-      if (!parsed.playlists && !parsed.moods) throw new Error("Invalid format");
-      setLlmResponse(parsed);
-      localStorage.setItem('aosubsonic-llm-cache', JSON.stringify(parsed));
-      setShowManualInput(false);
-    } catch (e) {
-      alert("Invalid JSON format. Please ensure you copied the raw JSON correctly.");
-    }
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(manualPrompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
 
@@ -290,117 +382,90 @@ export const HomePage = () => {
         })()}
       </div>
 
-      {/* For You / LLM Recommendations */}
-      <div className="mb-12 relative p-6 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800/50 shadow-xl overflow-hidden">
-        {/* Glow effect */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -mr-48 -mt-48 pointer-events-none"></div>
-        
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 relative z-10 gap-4">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-3xl font-bold text-white tracking-tight">
-              For You
+      {/* For You / Slider Recommendations */}
+      <div className="mb-12">
+        <div className="relative p-6 rounded-3xl bg-zinc-900/80 border border-white/10 shadow-2xl overflow-hidden mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              <FiSliders className="text-primary" /> Tune Your Vibe
             </h2>
-            {llmResponse?.usage && (
-              <span className="text-xs font-mono text-zinc-500 bg-zinc-800/50 px-2 py-1 rounded border border-zinc-700/50">
-                In: {llmResponse.usage.promptTokens} | Out: {llmResponse.usage.completionTokens}
-              </span>
-            )}
-          </div>
-          <div className="flex w-full md:w-auto space-x-2">
-            <input 
-              type="text" 
-              placeholder="Custom vibe? (e.g. 'Upbeat workout')" 
-              value={aiPromptInstruction}
-              onChange={(e) => setAiPromptInstruction(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleGenerateLLM();
-              }}
-              className="flex-1 md:w-64 bg-zinc-900/50 border border-zinc-700/50 text-white px-4 py-2 rounded-full text-sm focus:outline-none focus:border-primary/50 transition-colors"
-            />
-            <button onClick={handleGenerateLLM} disabled={isGenerating} className="text-sm bg-primary/20 text-primary hover:bg-primary hover:text-white px-4 py-2 rounded-full font-bold transition-colors whitespace-nowrap flex-shrink-0">
-              {isGenerating ? 'Generating...' : llmResponse ? 'Refresh AI' : 'Generate with AI'}
+            <button 
+              onClick={applySliders}
+              className="flex items-center gap-2 bg-white text-black hover:bg-zinc-200 px-6 py-2 rounded-full font-bold transition-colors text-sm shadow-lg"
+            >
+              <FiShuffle className="hidden" /> Apply
             </button>
           </div>
-        </div>
-
-        {showManualInput && (
-          <div className="bg-zinc-900 rounded-xl p-4 mb-6 border border-zinc-700 relative z-10">
-            <h3 className="text-lg font-bold text-white mb-2">Manual AI Mode</h3>
-            <p className="text-sm text-zinc-400 mb-4">Copy the prompt below, paste it into ChatGPT, and paste the JSON response back here.</p>
-            
-            <div className="flex space-x-4">
-              <button onClick={copyToClipboard} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white p-3 rounded-lg flex items-center justify-center font-bold transition-colors">
-                {copied ? <FiCheck className="mr-2 text-green-400" /> : <FiCopy className="mr-2" />} 
-                {copied ? 'Copied!' : 'Copy Prompt'}
+          
+          {llmApiKey && (
+            <div className="mb-6 relative flex items-center">
+              <input
+                type="text"
+                placeholder="Magic Vibe: Describe what you want to hear (e.g. 'upbeat workout mix')"
+                value={magicPrompt}
+                onChange={(e) => setMagicPrompt(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleMagicTune()}
+                className="w-full bg-white/10 text-white placeholder-zinc-400 px-6 py-3 rounded-full outline-none focus:ring-2 focus:ring-white/50 border border-white/10 transition-all"
+                disabled={isMagicTuning}
+              />
+              <button 
+                onClick={handleMagicTune}
+                disabled={isMagicTuning}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white hover:bg-zinc-200 text-black px-4 py-1.5 rounded-full font-bold text-sm shadow-md transition-all disabled:opacity-50"
+              >
+                {isMagicTuning ? "Tuning..." : "Magic"}
               </button>
             </div>
-            
-            <textarea
-              className="w-full mt-4 h-32 bg-zinc-950 text-zinc-300 border border-zinc-800 p-3 rounded-lg text-sm font-mono focus:outline-none focus:border-primary"
-              placeholder="Paste JSON response here..."
-              value={manualResponse}
-              onChange={(e) => setManualResponse(e.target.value)}
-            />
-            <button onClick={handleManualSubmit} className="mt-4 w-full bg-primary hover:bg-purple-600 text-white p-3 rounded-lg font-bold transition-colors">
-              Apply Recommendations
-            </button>
-          </div>
-        )}
+          )}
 
-        {!llmResponse && !showManualInput && !isGenerating && (
-          <div className="text-center py-12 relative z-10">
-            <FiCpu className="text-6xl text-zinc-700 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">AI Recommendations</h3>
-            <p className="text-zinc-400 max-w-md mx-auto">Set up an API key in Settings or use Manual Mode to get deeply personalized playlists based on your listening history.</p>
-          </div>
-        )}
-
-        {isGenerating && (
-          <div className="flex space-x-4 overflow-hidden relative z-10 py-2">
-            {[1, 2, 3].map(i => (
-              <div key={`skel-${i}`} className="w-64 flex-shrink-0 bg-zinc-800/40 rounded-xl p-4 animate-pulse border border-zinc-700/30">
-                <div className="w-full aspect-square bg-zinc-700/50 rounded-lg mb-4"></div>
-                <div className="h-4 bg-zinc-700/50 rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-zinc-700/50 rounded w-full mb-1"></div>
-                <div className="h-3 bg-zinc-700/50 rounded w-1/2"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+            {[
+              { axis: 'tempo', left: 'Slow', right: 'Fast' },
+              { axis: 'vocal', left: 'Instrumental', right: 'Layered' },
+              { axis: 'mood', left: 'Dark', right: 'Bright' },
+              { axis: 'acousticness', left: 'Synth', right: 'Organic' },
+              { axis: 'distortion', left: 'Clean', right: 'Raw' },
+              { axis: 'setting', left: 'Solo', right: 'Social' }
+            ].map(slider => (
+              <div key={slider.axis} className="flex flex-col space-y-2">
+                <div className="flex justify-between text-xs font-medium text-zinc-400">
+                  <span className={sliders[slider.axis as keyof typeof sliders] < 0.3 ? 'text-white' : ''}>{slider.left}</span>
+                  <span className="capitalize text-zinc-500">{slider.axis}</span>
+                  <span className={sliders[slider.axis as keyof typeof sliders] > 0.7 ? 'text-white' : ''}>{slider.right}</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" max="1" step="0.05"
+                  value={sliders[slider.axis as keyof typeof sliders]}
+                  onChange={(e) => handleSliderChange(slider.axis, parseFloat(e.target.value))}
+                  className="w-full h-2 rounded-lg appearance-none bg-zinc-800 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
+                />
               </div>
             ))}
           </div>
-        )}
+        </div>
 
-        {llmResponse?.playlists && (
-          <div ref={aiScrollRef} className="flex space-x-4 overflow-x-auto scrollbar-thin pb-4 snap-x relative z-10">
-            {llmResponse.playlists.map((pl, i) => (
-              <AIPlaylistCard 
-                key={`ai-pl-${i}`}
-                title={pl.name}
-                description={pl.description}
-                songIds={pl.songIds}
-                onClick={() => playSongList(pl.songIds)}
-              />
-            ))}
+        {isFetchingForYou && !forYouData && (
+          <div className="text-center py-12">
+            <FiRefreshCw className="animate-spin text-3xl text-primary mx-auto mb-4" />
+            <p className="text-zinc-400">Tuning your frequency...</p>
           </div>
         )}
-      </div>
 
-      {/* Moods Section */}
-      {llmResponse?.moods && (
-        <div className="mb-12">
-          {Object.entries(llmResponse.moods).map(([moodKey, moodData]) => {
-            if (!moodData || !moodData.songIds || moodData.songIds.length === 0) return null;
-            const title = moodKey.charAt(0).toUpperCase() + moodKey.slice(1) + " Mood";
-            return (
-              <MoodTrackList 
-                key={moodKey}
-                title={title}
-                description={moodData.description}
-                songIds={moodData.songIds}
-                onPlayAll={() => playSongList(moodData.songIds)}
-              />
-            );
-          })}
-        </div>
-      )}
+        {forYouData && forYouData.map((section: any, idx: number) => {
+          if (!section.songs || section.songs.length === 0) return null;
+          return (
+            <MoodTrackList 
+              key={`fy-${idx}`}
+              title={section.title}
+              description={section.description}
+              songIds={section.songs.map((s:any) => s.id)}
+              onPlayAll={() => playSongList(section.songs.map((s:any) => s.id))}
+              layout="row"
+            />
+          );
+        })}
+      </div>
 
       {/* Most Played */}
       <ScrollRow title="Most Played">
@@ -484,9 +549,12 @@ export const HomePage = () => {
               </div>
               <div className="w-12 h-12 bg-zinc-800 rounded shadow overflow-hidden flex-shrink-0 mr-4 relative">
                 {song.coverArt && (
-                  song.coverArt.startsWith('http') 
-                    ? <img src={song.coverArt} alt={song.title} className="w-full h-full object-cover" />
-                    : ctrl && <CachedImage id={song.coverArt} url={ctrl.getCoverArtUrl(song.coverArt)} alt={song.title} className="w-full h-full object-cover" />
+                  <CachedImage 
+                    id={song.coverArt} 
+                    url={song.coverArt.startsWith('http') ? song.coverArt : (ctrl ? ctrl.getCoverArtUrl(song.coverArt) : '')} 
+                    alt={song.title} 
+                    className="w-full h-full object-cover" 
+                  />
                 )}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                   <FiPlay className="text-white fill-white" />

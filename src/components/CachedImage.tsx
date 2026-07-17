@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getCachedImageUrl } from '../utils/imageCache';
+import { getCachedImageUrl, objectUrlCache } from '../utils/imageCache';
 
 interface CachedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   id: string;
@@ -8,9 +8,18 @@ interface CachedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
 }
 
 export const CachedImage = ({ id, url, fallback, className, alt, ...props }: CachedImageProps) => {
-  const [src, setSrc] = useState<string | null>(null);
+  const cacheKey = `cover-${id}`;
+  const [src, setSrc] = useState<string | null>(objectUrlCache.get(cacheKey) || null);
+  const [prevId, setPrevId] = useState(id);
+
+  if (id !== prevId) {
+    setPrevId(id);
+    setSrc(objectUrlCache.get(cacheKey) || null);
+  }
 
   useEffect(() => {
+    if (objectUrlCache.has(cacheKey)) return; // Skip async load if we got it synchronously from memory
+    
     let isMounted = true;
 
     const loadCachedImage = async () => {

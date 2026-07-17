@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiMic, FiMaximize2, FiList, FiShuffle } from 'react-icons/fi';
+import { FiPlay, FiPause, FiSkipForward, FiSkipBack, FiVolume2, FiMic, FiMaximize2, FiList, FiShuffle, FiRadio } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
 import { companionService } from '../services/CompanionService';
-
+import { useAuthStore } from '../store/auth.store';
+import { SubsonicController } from '../api/subsonic';
 export const TrackProgressBar = ({ duration: propDuration }: { duration: number }) => {
   const [audioDuration, setAudioDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -112,9 +113,54 @@ export const TrackProgressBar = ({ duration: propDuration }: { duration: number 
 };
 
 export const PlayerBar = () => {
-  const { queue, currentIndex, isPlaying, togglePlay, nextTrack, prevTrack, shuffleQueue, volume, setVolume, showQueue, toggleQueue } = usePlayerStore();
+  const { queue, currentIndex, isPlaying, togglePlay, nextTrack, prevTrack, shuffleQueue, volume, setVolume, showQueue, toggleQueue, addListToQueue } = usePlayerStore();
   const { showLyrics, toggleLyrics } = useUIStore();
   const currentSong = queue[currentIndex];
+
+  const [isRadioLoading, setIsRadioLoading] = useState(false);
+  const config = useAuthStore(state => state.config);
+  const ctrl = useMemo(() => config ? new SubsonicController(config) : null, [config]);
+
+  const handleRadio = async () => {
+    if (!currentSong || !ctrl || isRadioLoading) return;
+    setIsRadioLoading(true);
+    try {
+      const res = await fetch(`/api/radio/similar/${currentSong.id}`);
+      if (!res.ok) {
+        alert('Smart Radio not set up. Run the admin enrichment tool first.');
+        return;
+      }
+      const data = await res.json();
+      const songs = [];
+      for (const item of data.songs) {
+        try {
+          const songRes = await ctrl.getSong(item.id);
+          const song = songRes.song;
+          if (song) {
+            songs.push({
+              id: song.id,
+              title: song.title,
+              artist: song.artist,
+              album: song.album,
+              duration: song.duration,
+              streamUrl: ctrl.getStreamUrl(song.id),
+              coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
+            });
+          }
+        } catch (e) {
+          // skip failed songs
+        }
+      }
+      if (songs.length > 0) {
+        addListToQueue(songs);
+        // Optional: show a toast here if you have a toast system
+      }
+    } catch (e) {
+      console.error('Radio error:', e);
+    } finally {
+      setIsRadioLoading(false);
+    }
+  };
 
   return (
     <div className="h-24 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between px-6 z-[120] relative">
@@ -143,6 +189,9 @@ export const PlayerBar = () => {
       {/* Controls */}
       <div className="flex flex-col items-center justify-center w-1/3">
         <div className={`flex items-center space-x-6 ${!currentSong ? 'opacity-50 pointer-events-none' : ''}`}>
+          <button onClick={handleRadio} disabled={!currentSong || isRadioLoading} className={`text-zinc-400 hover:text-white transition-colors ${isRadioLoading ? 'animate-pulse text-primary' : ''}`} title="Smart Radio — Find similar songs">
+            <FiRadio className="text-lg" />
+          </button>
           <button onClick={shuffleQueue} className="text-zinc-400 hover:text-white transition-colors" title="Shuffle Queue">
             <FiShuffle className="text-lg" />
           </button>

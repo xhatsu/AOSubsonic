@@ -5,12 +5,13 @@ import { useAuthStore } from '../store/auth.store';
 import { SubsonicController } from '../api/subsonic';
 import { usePlayerStore } from '../store/player.store';
 import { useUIStore } from '../store/ui.store';
-import { FiPlay, FiArrowLeft, FiSearch, FiX, FiMusic, FiTrash2, FiPlus, FiList, FiMoreHorizontal } from 'react-icons/fi';
+import { FiPlay, FiArrowLeft, FiSearch, FiX, FiMusic, FiTrash2, FiPlus, FiList, FiMoreHorizontal, FiCpu } from 'react-icons/fi';
 import { CachedImage } from './CachedImage';
 import { WikiImageFallback } from './WikiImageFallback';
 import { Vibrant } from 'node-vibrant/browser';
 import { getCacheSizeInMB, clearImageCache } from '../utils/imageCache';
 import { AiPlaylistModal } from './AiPlaylistModal';
+import { MagicPlaylistModal } from './MagicPlaylistModal';
 import { HomePage } from './HomePage';
 import { useHistoryStore } from '../store/history.store';
 import { DownloaderView } from './DownloaderView';
@@ -27,11 +28,11 @@ export const MainContent = () => {
     selectedPlaylistId, setSelectedPlaylistId,
     selectedGenre, setSelectedGenre,
     llmProvider, setLlmProvider,
-    llmApiKey, setLlmApiKey,
-    llmModelName, setLlmModelName
+    llmApiKey, setLlmApiKey
   } = useUIStore();
 
   const [isAiPlaylistModalOpen, setIsAiPlaylistModalOpen] = useState(false);
+  const [isMagicModalOpen, setIsMagicModalOpen] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -365,7 +366,10 @@ export const MainContent = () => {
 
   const handlePlayAlbumList = (songs: any[], startIndex: number = 0) => {
     if (!ctrl) return;
-    const mappedQueue = songs.map((song: any) => ({
+    const song = songs[startIndex];
+    if (!song) return;
+    
+    const mappedQueue = [{
       id: song.id,
       title: song.title,
       artist: song.artist,
@@ -373,8 +377,8 @@ export const MainContent = () => {
       duration: song.duration,
       streamUrl: ctrl.getStreamUrl(song.id),
       coverArtUrl: song.coverArt ? ctrl.getCoverArtUrl(song.coverArt) : undefined
-    }));
-    setQueue(mappedQueue, startIndex);
+    }];
+    setQueue(mappedQueue, 0);
     play();
   };
 
@@ -984,14 +988,27 @@ export const MainContent = () => {
             <h3 className="font-semibold text-white">Create Playlist</h3>
           </div>
           
-          <div onClick={() => setIsAiPlaylistModalOpen(true)} className="group cursor-pointer p-4 bg-zinc-800/30 hover:bg-zinc-800/60 rounded-xl transition-colors border border-dashed border-primary/30 hover:border-primary/70 flex flex-col items-center justify-center min-h-[240px] relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-purple-600/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="w-16 h-16 rounded-full bg-zinc-800 border border-primary/20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform relative z-10">
-              <FiMusic className="text-2xl text-primary" />
+          {llmApiKey && (
+            <div onClick={() => setIsAiPlaylistModalOpen(true)} className="group cursor-pointer p-4 bg-zinc-800/30 hover:bg-zinc-800/60 rounded-xl transition-colors border border-dashed border-primary/30 hover:border-primary/70 flex flex-col items-center justify-center min-h-[240px] relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="w-16 h-16 rounded-full bg-primary/20 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <FiCpu className="w-8 h-8" />
+              </div>
+              <span className="font-bold text-white text-lg mb-2">Create with LLM</span>
+              <span className="text-zinc-400 text-sm text-center px-4">Manual prompt generation</span>
             </div>
-            <h3 className="font-semibold text-white relative z-10">AI Playlist</h3>
-            <p className="text-zinc-400 text-xs mt-2 text-center px-2 relative z-10">Create with LLM prompt</p>
-          </div>
+          )}
+
+          {llmApiKey && (
+            <div onClick={() => setIsMagicModalOpen(true)} className="group cursor-pointer p-4 bg-zinc-800/30 hover:bg-zinc-800/60 rounded-xl transition-colors border border-dashed border-primary/30 hover:border-primary/70 flex flex-col items-center justify-center min-h-[240px] relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="w-16 h-16 rounded-full bg-primary/20 text-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <FiMusic className="w-8 h-8" />
+              </div>
+              <span className="font-bold text-white text-lg mb-2">Magic Vibe Playlist</span>
+              <span className="text-zinc-400 text-sm text-center px-4">Auto-generate 200 songs via AI Embeddings</span>
+            </div>
+          )}
 
           {allPlaylists.map((pl: any) => (
             <div key={pl.id} className="group cursor-pointer p-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl transition-colors relative" onClick={() => handleOpenPlaylist(pl.id)}>
@@ -1239,16 +1256,6 @@ export const MainContent = () => {
                       />
                       <p className="text-xs text-zinc-500">Your key is stored locally and never sent to our servers.</p>
                     </div>
-                    <div className="flex flex-col space-y-2 pt-2">
-                      <label className="text-sm text-zinc-400">Model Name</label>
-                      <input 
-                        type="text" 
-                        value={llmModelName}
-                        onChange={(e) => setLlmModelName(e.target.value)}
-                        placeholder="e.g. openai/gpt-4o, google/gemini-pro"
-                        className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-md"
-                      />
-                    </div>
                   </>
                 )}
               </div>
@@ -1442,6 +1449,12 @@ export const MainContent = () => {
       <AiPlaylistModal 
         isOpen={isAiPlaylistModalOpen} 
         onClose={() => setIsAiPlaylistModalOpen(false)} 
+        ctrl={ctrl} 
+      />
+      
+      <MagicPlaylistModal 
+        isOpen={isMagicModalOpen} 
+        onClose={() => setIsMagicModalOpen(false)} 
         ctrl={ctrl} 
       />
     </div>

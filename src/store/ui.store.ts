@@ -38,8 +38,9 @@ interface UIState {
   setLlmProvider: (provider: 'openrouter' | 'manual') => void;
   llmApiKey: string;
   setLlmApiKey: (key: string) => void;
-  llmModelName: string;
-  setLlmModelName: (modelName: string) => void;
+
+  homeForYouData: any;
+  setHomeForYouData: (data: any) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -78,11 +79,15 @@ export const useUIStore = create<UIState>()(
       setLlmProvider: (provider) => set({ llmProvider: provider }),
       llmApiKey: '',
       setLlmApiKey: (key) => set({ llmApiKey: key }),
-      llmModelName: 'openai/gpt-4o',
-      setLlmModelName: (modelName) => set({ llmModelName: modelName }),
+
+      homeForYouData: null,
+      setHomeForYouData: (data) => set({ homeForYouData: data }),
     }),
     {
       name: 'ui-storage',
+      partialize: (state) => Object.fromEntries(
+        Object.entries(state).filter(([key]) => key !== 'homeForYouData')
+      ) as UIState,
     }
   )
 );

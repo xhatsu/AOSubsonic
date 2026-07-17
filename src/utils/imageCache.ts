@@ -1,7 +1,7 @@
 import { get, set, keys, delMany } from 'idb-keyval';
 
 // In-memory cache for Object URLs to prevent creating duplicate URLs for the same blob in a single session
-const objectUrlCache = new Map<string, string>();
+export const objectUrlCache = new Map<string, string>();
 
 export async function getCachedImageUrl(id: string, sourceUrl: string): Promise<string> {
   if (!id) return sourceUrl;

@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useGetDownloaderQueue, useGetRecentSuccesses, useGetDownloaderStatus, useDownloadMutation, useResumeWorkerMutation } from '../api/downloaderHooks';
+import { useGetDownloaderQueue, useGetRecentSuccesses, useGetDownloaderStatus, useDownloadMutation } from '../api/downloaderHooks';
 import { DownloaderAuth } from './DownloaderAuth';
 import { downloaderApi } from '../api/downloader';
-import { FiDownload, FiPlay, FiRefreshCw, FiAlertCircle, FiCheckCircle, FiClock, FiActivity } from 'react-icons/fi';
+import { FiDownload, FiRefreshCw, FiAlertCircle, FiCheckCircle, FiClock, FiActivity, FiSearch } from 'react-icons/fi';
+import { AppleMusicSearchModal } from './AppleMusicSearchModal';
 
 const LiveJobItem = ({ initialJob, explicitJobId, defaultStatus, renderItem }: { initialJob?: any, explicitJobId?: string, defaultStatus: string, renderItem: (item: any, i: number, defaultStatus: string) => React.ReactNode }) => {
   const jobId = explicitJobId || (initialJob ? (initialJob.job_id || initialJob.id || initialJob.current_job_id) : '');
   const isValidJobId = typeof jobId === 'string' && jobId.length > 10;
-  
+
   const { data } = useGetDownloaderStatus(isValidJobId ? jobId : '', !!isValidJobId);
-  
+
   const displayJob = data || initialJob || { job_id: jobId, title: 'Loading details...' };
-  
+
   if (!isValidJobId && !initialJob) return null;
-  
+
   return renderItem(displayJob, 0, data?.status ? data.status : defaultStatus);
 };
 
@@ -23,11 +24,15 @@ export const DownloaderView = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'active' | 'pending' | 'failed' | 'recent'>('active');
-  
+
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [pendingYtUrl, setPendingYtUrl] = useState('');
+  const [manualTrack, setManualTrack] = useState('');
+  const [manualArtist, setManualArtist] = useState('');
+
   const { data: queueData, isLoading: isLoadingQueue, isFetching: isFetchingQueue, isError: isQueueError, refetch: refetchQueue } = useGetDownloaderQueue(isAuthenticated);
   const { data: recentData, isLoading: isLoadingRecent, isFetching: isFetchingRecent, refetch: refetchRecent } = useGetRecentSuccesses(isAuthenticated);
   const downloadMutation = useDownloadMutation();
-  const resumeMutation = useResumeWorkerMutation();
 
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -44,19 +49,29 @@ export const DownloaderView = () => {
     return /^https?:\/\/(beta\.)?music\.apple\.com\/.*$/.test(inputUrl);
   };
 
+  const isYouTubeUrl = (u: string) => {
+    return /^https?:\/\/(www\.)?(youtube\.com|youtu\.be|music\.youtube\.com)\//.test(u);
+  };
+
   const handleDownload = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
-    
+
+    if (isYouTubeUrl(url)) {
+      setPendingYtUrl(url);
+      setSearchModalOpen(true);
+      return;
+    }
+
     if (!validateAppleMusicUrl(url)) {
-      setErrorMsg('Please enter a valid Apple Music URL.');
+      setErrorMsg('Please enter a valid Apple Music URL or YouTube URL.');
       return;
     }
 
     try {
       const response = await downloadMutation.mutateAsync(url);
-      
+
       if (response && (response.error || response.success === false || response.status === 'error')) {
         setErrorMsg(response.error || response.message || 'Failed to start download.');
         return;
@@ -81,7 +96,7 @@ export const DownloaderView = () => {
   }
 
   const renderStatusIcon = (status: string) => {
-    switch(status?.toLowerCase()) {
+    switch (status?.toLowerCase()) {
       case 'completed':
         return <FiCheckCircle className="text-green-500" />;
       case 'failed':
@@ -117,19 +132,19 @@ export const DownloaderView = () => {
               )}
             </div>
             <div className="text-zinc-400 text-sm flex items-center space-x-2 mt-1">
-               <span className="capitalize">{item.status || defaultStatus}</span>
-               {item.total_tracks !== undefined && (
-                 <>
-                   <span>•</span>
-                   <span>{item.total_tracks} Tracks</span>
-                 </>
-               )}
-               {item.progress !== undefined && (
-                 <>
-                   <span>•</span>
-                   <span>{item.progress}%</span>
-                 </>
-               )}
+              <span className="capitalize">{item.status || defaultStatus}</span>
+              {item.total_tracks !== undefined && (
+                <>
+                  <span>•</span>
+                  <span>{item.total_tracks} Tracks</span>
+                </>
+              )}
+              {item.progress !== undefined && (
+                <>
+                  <span>•</span>
+                  <span>{item.progress}%</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -171,7 +186,7 @@ export const DownloaderView = () => {
         </div>
       );
     }
-    
+
     if (isQueueError) {
       return (
         <div className="p-12 text-center text-red-500">
@@ -264,7 +279,7 @@ export const DownloaderView = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto bg-zinc-950 p-6 scrollbar-thin pb-32">
       <div className="max-w-4xl mx-auto w-full space-y-8">
-        
+
         {/* Header & Actions */}
         <div className="flex items-center justify-between">
           <div>
@@ -272,19 +287,12 @@ export const DownloaderView = () => {
             <p className="text-zinc-400 mt-1">Queue and manage music downloads directly to your server.</p>
           </div>
           <div className="flex space-x-3">
-            <button 
+            <button
               onClick={handleRefresh}
               disabled={isRefreshing}
               className="flex items-center px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
             >
               <FiRefreshCw className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} /> Refresh
-            </button>
-            <button 
-              onClick={() => resumeMutation.mutate()}
-              disabled={resumeMutation.isPending}
-              className="flex items-center px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors font-medium text-sm disabled:opacity-50"
-            >
-              <FiPlay className="mr-2" /> Resume Worker
             </button>
           </div>
         </div>
@@ -294,16 +302,16 @@ export const DownloaderView = () => {
           <form onSubmit={handleDownload}>
             <label className="block text-sm font-medium text-zinc-400 mb-2">Apple Music URL</label>
             <div className="flex space-x-4">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://music.apple.com/..."
                 className="flex-1 bg-zinc-950 border border-zinc-700 focus:border-primary text-white px-4 py-3 rounded-lg outline-none transition-colors"
               />
-              <button 
+              <button
                 type="submit"
-                disabled={!url || downloadMutation.isPending || !validateAppleMusicUrl(url)}
+                disabled={!url || downloadMutation.isPending || (!validateAppleMusicUrl(url) && !isYouTubeUrl(url))}
                 className="bg-primary hover:bg-purple-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white px-6 py-3 rounded-lg font-bold flex items-center transition-colors"
               >
                 {downloadMutation.isPending ? <FiRefreshCw className="animate-spin" /> : <><FiDownload className="mr-2" /> Download</>}
@@ -311,46 +319,99 @@ export const DownloaderView = () => {
             </div>
             {errorMsg && <p className="text-red-500 text-sm mt-3 flex items-center"><FiAlertCircle className="mr-1" />{errorMsg}</p>}
             {successMsg && <p className="text-green-500 text-sm mt-3 flex items-center"><FiCheckCircle className="mr-1" />{successMsg}</p>}
-            {!errorMsg && !successMsg && url && !validateAppleMusicUrl(url) && (
-               <p className="text-yellow-500 text-sm mt-3 flex items-center"><FiAlertCircle className="mr-1" />Invalid URL format. Must be an Apple Music link.</p>
+            {!errorMsg && !successMsg && url && !validateAppleMusicUrl(url) && !isYouTubeUrl(url) && (
+              <p className="text-yellow-500 text-sm mt-3 flex items-center"><FiAlertCircle className="mr-1" />Invalid URL format. Must be an Apple Music or YouTube link.</p>
             )}
           </form>
+        </div>
+
+        {/* Manual Search UI */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 shadow-lg">
+          <label className="block text-sm font-medium text-zinc-400 mb-2">Search Apple Music Manually</label>
+          <div className="flex space-x-4">
+            <input
+              type="text"
+              value={manualTrack}
+              onChange={(e) => setManualTrack(e.target.value)}
+              placeholder="Song Name (e.g. Shape of You)"
+              className="flex-1 bg-zinc-950 border border-zinc-700 focus:border-primary text-white px-4 py-3 rounded-lg outline-none transition-colors"
+            />
+            <input
+              type="text"
+              value={manualArtist}
+              onChange={(e) => setManualArtist(e.target.value)}
+              placeholder="Artist (Optional)"
+              className="flex-1 bg-zinc-950 border border-zinc-700 focus:border-primary text-white px-4 py-3 rounded-lg outline-none transition-colors"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setPendingYtUrl('');
+                setSearchModalOpen(true);
+              }}
+              disabled={!manualTrack.trim() && !manualArtist.trim()}
+              className="bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-600 text-white px-6 py-3 rounded-lg font-bold flex items-center transition-colors"
+            >
+              <FiSearch className="mr-2" /> Search
+            </button>
+          </div>
         </div>
 
         {/* Tabbed Queue View */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-lg">
           <div className="flex border-b border-zinc-800 bg-zinc-900/50">
-            <button 
-              onClick={() => setActiveTab('active')} 
+            <button
+              onClick={() => setActiveTab('active')}
               className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'active' ? 'border-primary text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'}`}
             >
               Currently Downloading
             </button>
-            <button 
-              onClick={() => setActiveTab('pending')} 
+            <button
+              onClick={() => setActiveTab('pending')}
               className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'pending' ? 'border-primary text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'}`}
             >
               Pending Queue
             </button>
-            <button 
-              onClick={() => setActiveTab('failed')} 
+            <button
+              onClick={() => setActiveTab('failed')}
               className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'failed' ? 'border-red-500 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'}`}
             >
               Failed Jobs
             </button>
-            <button 
-              onClick={() => setActiveTab('recent')} 
+            <button
+              onClick={() => setActiveTab('recent')}
               className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === 'recent' ? 'border-green-500 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'}`}
             >
               Recent Successes
             </button>
           </div>
-          
+
           <div className="min-h-[200px]">
             {renderActiveTabContent()}
           </div>
         </div>
 
+        <AppleMusicSearchModal
+          isOpen={searchModalOpen}
+          youtubeUrl={pendingYtUrl || undefined}
+          initialTrack={!pendingYtUrl ? manualTrack : undefined}
+          initialArtist={!pendingYtUrl ? manualArtist : undefined}
+          onClose={() => {
+            setSearchModalOpen(false);
+            setPendingYtUrl('');
+          }}
+          onDownloadSuccess={(msg) => {
+            setSearchModalOpen(false);
+            setPendingYtUrl('');
+            setUrl('');
+            setManualTrack('');
+            setManualArtist('');
+            setSuccessMsg(msg);
+            setTimeout(() => setSuccessMsg(''), 3000);
+            refetchQueue();
+            refetchRecent();
+          }}
+        />
       </div>
     </div>
   );
