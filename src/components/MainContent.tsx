@@ -30,6 +30,7 @@ export const MainContent = () => {
     llmProvider, setLlmProvider,
     llmApiKey, setLlmApiKey,
     languageStrictness, setLanguageStrictness,
+    sceneStrictness, setSceneStrictness,
     radioAlgorithm, setRadioAlgorithm
   } = useUIStore();
 
@@ -1270,11 +1271,26 @@ export const MainContent = () => {
                     className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-md"
                   >
                     <option value={0}>Disabled (Ignore Language)</option>
-                    <option value={0.05}>Soft Prefer (Bonus +0.05)</option>
-                    <option value={0.15}>Strict Prefer (Bonus +0.15)</option>
-                    <option value={0.30}>Extremely Strict (Bonus +0.30)</option>
+                    <option value={0.03}>Soft Prefer (Bonus +0.03)</option>
+                    <option value={0.08}>Strict Prefer (Bonus +0.08)</option>
+                    <option value={0.15}>Extremely Strict (Bonus +0.15)</option>
                   </select>
                   <p className="text-xs text-zinc-500">Adds a score bonus to songs with the same language when generating track radio.</p>
+                </div>
+
+                <div className="flex flex-col space-y-2 pt-4 border-t border-zinc-800">
+                  <label className="text-sm text-zinc-400">Scene Match Strictness (Radio)</label>
+                  <select 
+                    value={sceneStrictness} 
+                    onChange={(e) => setSceneStrictness(parseFloat(e.target.value))}
+                    className="bg-zinc-800 border border-zinc-700 text-white p-3 rounded-lg focus:ring-primary focus:border-primary w-full max-w-md"
+                  >
+                    <option value={0}>Disabled (Ignore Scene)</option>
+                    <option value={0.03}>Soft Prefer (Bonus +0.03)</option>
+                    <option value={0.08}>Strict Prefer (Bonus +0.08) - Default</option>
+                    <option value={0.15}>Extremely Strict (Bonus +0.15)</option>
+                  </select>
+                  <p className="text-xs text-zinc-500">Adds a score bonus to songs belonging to the exact same cultural scene.</p>
                 </div>
 
                 <div className="flex flex-col space-y-2 pt-4 border-t border-zinc-800">

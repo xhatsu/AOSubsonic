@@ -125,6 +125,7 @@ async function startServer() {
   // Smart Radio — read-only similarity endpoint
   let vectorCache = null;
   let songMetaCache = null;
+  let artistClusterCache = null;
   let isCacheReady = false;
 
   let radioCachePromise = null;
@@ -143,7 +144,7 @@ async function startServer() {
       }
 
       try {
-        const res = await fetch(`${url}/rest/v1/radio_songs?select=id,title,artist,description,album,vector,language&vector=not.is.null`, {
+        const res = await fetch(`${url}/rest/v1/radio_songs?select=id,title,artist,description,album,vector,language,year,scene&vector=not.is.null`, {
           headers: {
             'apikey': key,
             'Authorization': `Bearer ${key}`
@@ -158,6 +159,27 @@ async function startServer() {
 
         vectorCache = new Map();
         songMetaCache = new Map();
+        artistClusterCache = new Map();
+
+        // Fetch artist clusters for YouTube-like collaborative filtering
+        try {
+          const artistRes = await fetch(`${url}/rest/v1/radio_artists?select=artist_name,similar_artists`, {
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`
+            }
+          });
+          if (artistRes.ok) {
+            const artistRows = await artistRes.json();
+            for (const row of artistRows) {
+              if (row.artist_name && row.similar_artists) {
+                artistClusterCache.set(row.artist_name.toLowerCase(), row.similar_artists);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Could not fetch radio_artists, skipping artist cluster bonus:', err.message);
+        }
 
         for (const row of rows) {
           if (row.vector) {
@@ -170,7 +192,9 @@ async function startServer() {
               artist: row.artist,
               album: row.album,
               description: row.description || '',
-              language: row.language || ''
+              language: row.language || '',
+              year: row.year || null,
+              scene: row.scene || null
             });
           }
         }
@@ -212,7 +236,60 @@ async function startServer() {
     return false;
   }
 
-  function buildCluster(seedId, count, candidateIds = null, languageStrictness = 0) {
+  function getEraBonus(year1, year2) {
+    if (!year1 || !year2) return 0;
+    const y1 = parseInt(year1, 10);
+    const y2 = parseInt(year2, 10);
+    if (isNaN(y1) || isNaN(y2)) return 0;
+    
+    const diff = Math.abs(y1 - y2);
+    if (diff <= 3) return 0.06;
+    if (diff <= 7) return 0.04;
+    if (diff <= 12) return 0.02;
+    return 0;
+  }
+
+  const MOODS = ['dark', 'melancholic', 'neutral', 'bright', 'euphoric'];
+  const ENERGIES = ['ambient', 'calm', 'moderate', 'energetic', 'explosive'];
+
+  function extractVibe(desc) {
+    if (!desc) return { mood: null, energy: null };
+    const lower = desc.toLowerCase();
+    
+    let mood = null;
+    for (let i = 0; i < MOODS.length; i++) {
+      if (lower.includes(MOODS[i])) {
+        mood = i;
+        break;
+      }
+    }
+    
+    let energy = null;
+    for (let i = 0; i < ENERGIES.length; i++) {
+      if (lower.includes(ENERGIES[i])) {
+        energy = i;
+        break;
+      }
+    }
+    return { mood, energy };
+  }
+
+  function getVibePenalty(v1, v2) {
+    let penalty = 0;
+    if (v1.mood !== null && v2.mood !== null) {
+      const diff = Math.abs(v1.mood - v2.mood);
+      if (diff >= 3) penalty += 0.15;
+      else if (diff === 2) penalty += 0.08;
+    }
+    if (v1.energy !== null && v2.energy !== null) {
+      const diff = Math.abs(v1.energy - v2.energy);
+      if (diff >= 3) penalty += 0.15;
+      else if (diff === 2) penalty += 0.08;
+    }
+    return penalty;
+  }
+
+  function buildCluster(seedId, count, candidateIds = null, languageStrictness = 0, sceneStrictness = 0.15) {
     const currentVec = vectorCache.get(seedId);
     if (!currentVec) return [];
 
@@ -232,9 +309,9 @@ async function startServer() {
 
       // Reduce points for same album or artist to encourage variety
       if (seedAlbum && candMeta.album && candMeta.album.toLowerCase() === seedAlbum) {
-        score -= 0.15;
+        score -= 0.10;
       }
-      
+
       // Apply Language Match Bonus
       if (languageStrictness > 0 && seedMeta.language && candMeta.language) {
         if (seedMeta.language.toLowerCase() === candMeta.language.toLowerCase()) {
@@ -242,9 +319,36 @@ async function startServer() {
         }
       }
 
+      // Apply Era Match Bonus (smooth time delta to mimic YouTube's temporal clustering)
+      score += getEraBonus(seedMeta.year, candMeta.year);
+
+      // Apply Scene Match Bonus
+      if (seedMeta.scene && candMeta.scene) {
+        if (seedMeta.scene === candMeta.scene) {
+          score += sceneStrictness;
+        }
+      }
+
       const candArtistTokens = extractArtists(candMeta.artist);
       if (seedArtistTokens.length > 0 && candArtistTokens.length > 0 && hasArtistOverlap(seedArtistTokens, candArtistTokens)) {
-        score -= 0.25; // Heavy fuzzy penalty
+        score -= 0.04; // Soft penalty so it can still cluster similar artists
+      }
+
+      // Apply Artist Cluster Bonus (Collaborative Filtering mimicking YouTube)
+      const candArtistStr = candMeta.artist ? candMeta.artist.toLowerCase() : '';
+      const seedArtistStr = seedMeta.artist ? seedMeta.artist.toLowerCase() : '';
+      if (artistClusterCache && seedArtistStr && candArtistStr) {
+        // Find if any extracted token from seed matches an artist in our DB
+        for (const seedToken of seedArtistTokens) {
+          const similarArtists = artistClusterCache.get(seedToken);
+          if (similarArtists) {
+             const isSimilar = similarArtists.some(sa => candArtistStr.includes(sa.toLowerCase()));
+             if (isSimilar) {
+               score += 0.06; // Strong collaborative clustering bonus, but flexible enough to let vector math win
+               break; // Only apply once
+             }
+          }
+        }
       }
 
       results.push({ id, score, ...candMeta });
@@ -296,7 +400,7 @@ async function startServer() {
     return finalCluster;
   }
 
-  function findNextChainSong(currentSeedId, originalSeedId, excludeIds = [], languageStrictness = 0, recentIds = []) {
+  function findNextChainSong(currentSeedId, originalSeedId, excludeIds = [], languageStrictness = 0, sceneStrictness = 0.15, recentIds = []) {
     const currentVec = vectorCache.get(currentSeedId);
     const originalVec = vectorCache.get(originalSeedId);
     if (!currentVec || !originalVec) return null;
@@ -305,18 +409,18 @@ async function startServer() {
     const currentAlbum = currentMeta.album ? currentMeta.album.toLowerCase() : null;
     const currentArtistTokens = extractArtists(currentMeta.artist);
 
-    // Build recent artist token set for chain-history penalty
-    const recentArtistTokens = new Set();
+    // Build recent artist token frequency map for chain-history penalty
+    const recentArtistTokenCounts = new Map();
     for (const rid of recentIds) {
       const rMeta = songMetaCache.get(rid);
       if (rMeta) {
         for (const t of extractArtists(rMeta.artist)) {
-          recentArtistTokens.add(t);
+          recentArtistTokenCounts.set(t, (recentArtistTokenCounts.get(t) || 0) + 1);
         }
       }
     }
 
-    const topN = 5;
+    const topN = 3;
     const candidates = [];
 
     const excludeSet = new Set(excludeIds);
@@ -328,14 +432,14 @@ async function startServer() {
       if (excludeSet.has(id)) continue;
       const candMeta = songMetaCache.get(id);
 
-      // 85% current step, 15% original anchor — lets the chain walk further
+      // 50% current step, 50% original anchor — stays much closer to the original vibe like YouTube Mixes
       const simCurrent = cosineSimilarity(currentVec, vec);
       const simOriginal = cosineSimilarity(originalVec, vec);
-      let score = (0.85 * simCurrent) + (0.15 * simOriginal);
+      let score = (0.5 * simCurrent) + (0.5 * simOriginal);
 
       // Apply penalties relative to current seed to force it to walk away from same album/artist
       if (currentAlbum && candMeta.album && candMeta.album.toLowerCase() === currentAlbum) {
-        score -= 0.20;
+        score -= 0.10;
       }
 
       // Apply Language Match Bonus
@@ -345,17 +449,54 @@ async function startServer() {
         }
       }
 
-      const candArtistTokens = extractArtists(candMeta.artist);
-      // Penalty for matching current song's artist
-      if (currentArtistTokens.length > 0 && candArtistTokens.length > 0 && hasArtistOverlap(currentArtistTokens, candArtistTokens)) {
-        score -= 0.35; 
+      // Apply Era Match Bonus (smooth time delta to mimic YouTube)
+      score += getEraBonus(currentMeta.year, candMeta.year);
+
+      // Apply Scene Match Bonus
+      if (currentMeta.scene && candMeta.scene) {
+        if (currentMeta.scene === candMeta.scene) {
+          score += sceneStrictness;
+        }
       }
 
-      // Penalty for matching any artist from the recent chain history
-      if (recentArtistTokens.size > 0 && candArtistTokens.length > 0) {
+      // Apply Vibe Guard Penalty
+      const currentVibe = extractVibe(currentMeta.description);
+      const candVibe = extractVibe(candMeta.description);
+      score -= getVibePenalty(currentVibe, candVibe);
+
+      const candArtistTokens = extractArtists(candMeta.artist);
+      // Soft penalty for matching current song's artist
+      if (currentArtistTokens.length > 0 && candArtistTokens.length > 0 && hasArtistOverlap(currentArtistTokens, candArtistTokens)) {
+        score -= 0.04;
+      }
+
+      // Apply Artist Cluster Bonus (Collaborative Filtering mimicking YouTube)
+      const candArtistStr = candMeta.artist ? candMeta.artist.toLowerCase() : '';
+      const currentArtistStr = currentMeta.artist ? currentMeta.artist.toLowerCase() : '';
+      if (artistClusterCache && currentArtistStr && candArtistStr) {
+        for (const currentToken of currentArtistTokens) {
+          const similarArtists = artistClusterCache.get(currentToken);
+          if (similarArtists) {
+             const isSimilar = similarArtists.some(sa => candArtistStr.includes(sa.toLowerCase()));
+             if (isSimilar) {
+               score += 0.06; // Strong collaborative clustering bonus, but flexible enough to let vector math win
+               break;
+             }
+          }
+
+        }
+      }
+
+      // Progressive penalty for matching any artist from the recent chain history
+      // For first 5 songs it is gentle, but after 6+ it forces a switch
+      if (recentArtistTokenCounts.size > 0 && candArtistTokens.length > 0) {
         for (const t of candArtistTokens) {
-          if (recentArtistTokens.has(t)) {
-            score -= 0.05;
+          const count = recentArtistTokenCounts.get(t);
+          if (count) {
+            if (count <= 2) score -= count * 0.01;         // 1-2 times
+            else if (count <= 4) score -= count * 0.015;   // 3-4 times
+            else if (count <= 6) score -= count * 0.025;   // 5-6 times
+            else score -= count * 0.04;                    // 7+ times (forces switch)
           }
         }
       }
@@ -368,7 +509,8 @@ async function startServer() {
     if (candidates.length === 0) return null;
 
     // Temperature-based weighted random sampling via softmax
-    const temperature = 0.15;
+    // Lower temperature = more bias towards highest score
+    const temperature = 0.05;
     const expScores = candidates.map(c => Math.exp(c.score / temperature));
     const sumExp = expScores.reduce((a, b) => a + b, 0);
     const probs = expScores.map(e => e / sumExp);
@@ -482,12 +624,14 @@ async function startServer() {
     const { songId } = req.params;
     const count = parseInt(req.query.count) || 30;
     const strictness = parseFloat(req.query.strictness) || 0;
-    
+    const sceneStrictness = parseFloat(req.query.sceneStrictness);
+    const resolvedSceneStrictness = isNaN(sceneStrictness) ? 0.15 : sceneStrictness;
+
     if (!vectorCache.has(songId)) {
       return res.status(404).json({ error: 'Song not found in radio database.' });
     }
-    
-    const cluster = buildCluster(songId, count, null, strictness);
+
+    const cluster = buildCluster(songId, count, null, strictness, resolvedSceneStrictness);
     res.json({ songs: cluster });
   });
 
@@ -500,13 +644,15 @@ async function startServer() {
     const originalSeedId = req.query.original || currentSeedId;
     const excludeIds = (req.query.exclude || '').split(',').filter(Boolean);
     const strictness = parseFloat(req.query.strictness) || 0;
+    const sceneStrictness = parseFloat(req.query.sceneStrictness);
+    const resolvedSceneStrictness = isNaN(sceneStrictness) ? 0.15 : sceneStrictness;
     const recentIds = (req.query.recent || '').split(',').filter(Boolean);
-    
+
     if (!vectorCache.has(currentSeedId) || !vectorCache.has(originalSeedId)) {
       return res.status(404).json({ error: 'Seed song not found in radio database.' });
     }
-    
-    const nextSong = findNextChainSong(currentSeedId, originalSeedId, excludeIds, strictness, recentIds);
+
+    const nextSong = findNextChainSong(currentSeedId, originalSeedId, excludeIds, strictness, resolvedSceneStrictness, recentIds);
     res.json({ song: nextSong });
   });
 

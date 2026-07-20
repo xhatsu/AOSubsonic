@@ -37,3 +37,4 @@ nginx.conf
 
 # Local scripts
 *.sh
+test*

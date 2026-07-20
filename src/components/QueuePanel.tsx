@@ -24,7 +24,7 @@ export const QueuePanel = () => {
     const lastSong = queue[queue.length - 1];
     setIsRadioLoading(true);
     try {
-      const { languageStrictness, radioAlgorithm } = useUIStore.getState();
+      const { languageStrictness, sceneStrictness, radioAlgorithm } = useUIStore.getState();
 
       if (radioAlgorithm === 'chain') {
         const originalSeedId = lastSong.id;
@@ -35,8 +35,8 @@ export const QueuePanel = () => {
 
         for (let i = 0; i < fetchCount; i++) {
           const excludeStr = Array.from(excludeIds).join(',');
-          const recentStr = recentChainIds.slice(-5).join(',');
-          const res = await fetch(`/api/radio/chain-next/${currentSeedId}?original=${originalSeedId}&exclude=${excludeStr}&strictness=${languageStrictness}&recent=${recentStr}`);
+          const recentStr = recentChainIds.slice(-10).join(',');
+          const res = await fetch(`/api/radio/chain-next/${currentSeedId}?original=${originalSeedId}&exclude=${excludeStr}&strictness=${languageStrictness}&sceneStrictness=${sceneStrictness}&recent=${recentStr}`);
           if (!res.ok) {
             if (i === 0) alert('Smart Radio not set up. Run the admin enrichment tool first.');
             break;
@@ -65,7 +65,7 @@ export const QueuePanel = () => {
           } catch (e) { }
         }
       } else {
-        const res = await fetch(`/api/radio/similar/${lastSong.id}?strictness=${languageStrictness}&count=${fetchCount}`);
+        const res = await fetch(`/api/radio/similar/${lastSong.id}?strictness=${languageStrictness}&sceneStrictness=${sceneStrictness}&count=${fetchCount}`);
         if (!res.ok) {
           alert('Smart Radio not set up. Run the admin enrichment tool first.');
           return;

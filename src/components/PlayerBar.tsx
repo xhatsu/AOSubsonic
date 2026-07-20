@@ -125,7 +125,7 @@ export const PlayerBar = () => {
     if (!currentSong || !ctrl || isRadioLoading) return;
     setIsRadioLoading(true);
     try {
-      const { languageStrictness, radioAlgorithm } = useUIStore.getState();
+      const { languageStrictness, sceneStrictness, radioAlgorithm } = useUIStore.getState();
 
       if (radioAlgorithm === 'chain') {
         const originalSeedId = currentSong.id;
@@ -136,8 +136,8 @@ export const PlayerBar = () => {
 
         for (let i = 0; i < 15; i++) {
           const excludeStr = Array.from(excludeIds).join(',');
-          const recentStr = recentChainIds.slice(-5).join(',');
-          const res = await fetch(`/api/radio/chain-next/${currentSeedId}?original=${originalSeedId}&exclude=${excludeStr}&strictness=${languageStrictness}&recent=${recentStr}`);
+          const recentStr = recentChainIds.slice(-10).join(',');
+          const res = await fetch(`/api/radio/chain-next/${currentSeedId}?original=${originalSeedId}&exclude=${excludeStr}&strictness=${languageStrictness}&sceneStrictness=${sceneStrictness}&recent=${recentStr}`);
           if (!res.ok) {
             if (i === 0) alert('Smart Radio not set up. Run the admin enrichment tool first.');
             break;
@@ -166,7 +166,7 @@ export const PlayerBar = () => {
           } catch (e) { }
         }
       } else {
-        const res = await fetch(`/api/radio/similar/${currentSong.id}?strictness=${languageStrictness}&count=15`);
+        const res = await fetch(`/api/radio/similar/${currentSong.id}?strictness=${languageStrictness}&sceneStrictness=${sceneStrictness}&count=15`);
         if (!res.ok) {
           alert('Smart Radio not set up. Run the admin enrichment tool first.');
           return;

@@ -45,6 +45,9 @@ interface UIState {
   languageStrictness: number;
   setLanguageStrictness: (strictness: number) => void;
 
+  sceneStrictness: number;
+  setSceneStrictness: (strictness: number) => void;
+
   infiniteRadio: boolean;
   setInfiniteRadio: (enabled: boolean) => void;
 
@@ -92,8 +95,11 @@ export const useUIStore = create<UIState>()(
       homeForYouData: null,
       setHomeForYouData: (data) => set({ homeForYouData: data }),
 
-      languageStrictness: 0.05,
+      languageStrictness: 0.03,
       setLanguageStrictness: (strictness) => set({ languageStrictness: strictness }),
+
+      sceneStrictness: 0.08,
+      setSceneStrictness: (strictness) => set({ sceneStrictness: strictness }),
 
       infiniteRadio: false,
       setInfiniteRadio: (enabled) => set({ infiniteRadio: enabled }),
